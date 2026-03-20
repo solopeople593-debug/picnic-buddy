@@ -1,104 +1,86 @@
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
-import { useState, Suspense, useEffect } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabase";
 
-function SetupContent() {
-  const searchParams = useSearchParams();
+export default function SetupPage() {
+  const [rule, setRule] = useState<string>("");
+  const [mode, setMode] = useState<string>("ai");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const router = useRouter();
-  
-  const mode = searchParams.get("mode") || "ai";
-  const code = searchParams.get("code") || "?????";
 
-  const [rule, setRule] = useState("");
-  const [example, setExample] = useState("");
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rule.trim() || isLoading) return;
 
-  // Если режим AI, мы можем сразу подставить "Случайное правило" (позже подключим нейронку)
-  useEffect(() => {
-    if (mode === "ai") {
-      setRule("Words that contain double letters (e.g., Apple, Beer)");
-      setExample("Apple");
+    setIsLoading(true);
+    const code = Math.random().toString(36).substring(2, 7).toUpperCase();
+
+    try {
+      const { error } = await supabase.from("games").insert([
+        {
+          code,
+          rule,
+          mode,
+          turn_index: 0,
+        },
+      ]);
+
+      if (error) throw error;
+
+      // Устанавливаем имя хоста по умолчанию
+      localStorage.setItem("picnic_username", "Host");
+
+      // Перенаправляем в лобби
+      router.push(`/lobby?code=${code}&mode=${mode}`);
+    } catch (err) {
+      console.error("Error creating game:", err);
+      alert("Failed to create game. Please check your Supabase connection.");
+    } finally {
+      setIsLoading(false);
     }
-  }, [mode]);
-
-  const handleStartPicnic = () => {
-    // Переходим в саму игру и передаем все настройки
-    const params = new URLSearchParams({
-      code,
-      mode,
-      rule,
-      example
-    });
-    router.push(`/game?${params.toString()}`);
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-background text-text-main">
-      <div className="text-5xl mb-6 animate-bounce">🤫</div>
-      
-      <h1 className="text-3xl font-black mb-2 text-center">The Secret Rule</h1>
-      <p className="text-gray-500 text-sm text-center mb-10 max-w-xs font-medium">
-        {mode === "ai" 
-          ? "AI has generated a rule. You can change it if you want!" 
-          : "Players will have to guess what you're thinking."}
-      </p>
-
-      <div className="w-full max-w-sm space-y-6">
-        {/* Поле ПРАВИЛО */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-4">
-            {mode === "ai" ? "AI Selected Rule" : "Enter Your Secret Rule"}
-          </label>
-          <div className="relative">
-            <textarea
+    <div className="min-h-screen bg-[#FDFCF8] flex items-center justify-center p-6 text-slate-900">
+      <form onSubmit={handleCreate} className="w-full max-w-md bg-white p-8 rounded-[32px] shadow-xl border border-gray-100">
+        <h1 className="text-2xl font-black mb-6 text-center">Setup Picnic 🧺</h1>
+        
+        <div className="space-y-5">
+          <div>
+            <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Secret Rule</label>
+            <input 
+              required
               value={rule}
               onChange={(e) => setRule(e.target.value)}
-              placeholder="e.g. Items that are green..."
-              className="w-full bg-white border-2 border-gray-100 rounded-[2rem] p-5 shadow-sm focus:border-accent outline-none font-bold text-lg min-h-[120px] resize-none"
+              placeholder="e.g., Only red items"
+              className="w-full p-4 rounded-2xl border-2 border-gray-100 outline-none focus:border-green-400 transition-all"
             />
-            <div className="absolute top-4 right-4 text-2xl">📝</div>
           </div>
+
+          <div>
+            <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Hosting Mode</label>
+            <select 
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              className="w-full p-4 rounded-2xl border-2 border-gray-100 bg-white outline-none focus:border-green-400"
+            >
+              <option value="ai">AI Host (Automated)</option>
+              <option value="manual">Manual (You judge)</option>
+              <option value="auto">Hybrid (You + AI help)</option>
+            </select>
+          </div>
+
+          <button 
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-green-500 text-white py-5 rounded-2xl font-black shadow-lg hover:bg-green-600 active:scale-[0.98] transition-all disabled:opacity-50"
+          >
+            {isLoading ? "PREPARING..." : "CREATE ROOM"}
+          </button>
         </div>
-
-        {/* Поле ПРИМЕР */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-4">
-            First Correct Item (Example)
-          </label>
-          <input
-            value={example}
-            onChange={(e) => setExample(e.target.value)}
-            placeholder="e.g. Grass"
-            className="w-full bg-white border-2 border-gray-100 rounded-2xl p-5 shadow-sm focus:border-accent outline-none font-bold"
-          />
-        </div>
-
-        {/* Кнопка запуска */}
-        <button
-          onClick={handleStartPicnic}
-          disabled={!rule || !example}
-          className={`w-full py-5 rounded-[2rem] font-black text-xl shadow-xl transition-all flex items-center justify-center gap-3 ${
-            rule && example 
-              ? "bg-accent text-white shadow-accent/30 hover:scale-[1.03] active:scale-95" 
-              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-          }`}
-        >
-          <span>Let&apos;s Play!</span>
-          <span className="text-2xl">🚀</span>
-        </button>
-
-        <p className="text-center text-[10px] text-gray-400 uppercase font-bold tracking-widest">
-          The game will start for all players
-        </p>
-      </div>
-    </main>
-  );
-}
-
-export default function SetupPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-bold text-accent">Preparing...</div>}>
-      <SetupContent />
-    </Suspense>
+      </form>
+    </div>
   );
 }
