@@ -191,8 +191,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           setIsVictory(true)
           setWinner(room.winner || '')
         }
+        console.log('turn_player from DB:', room.turn_player)
         setTurnPlayer(room.turn_player || '')
-
         const livesData: Record<string, number> = room.lives || {}
         if (!(name in livesData) && !noLives) {
           livesData[name] = 3
@@ -216,16 +216,17 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           if (!names.includes(name)) names.push(name)
           setPlayers(names)
 
-          // ✅ ФИКС 2: инициализация первого хода
-          // Только хост устанавливает первый ход чтобы не было race condition
+           // ✅ ФИКС 2: инициализация первого хода
           const { data: freshRoom } = await supabase
             .from('rooms').select('turn_player').eq('code', code).single()
 
-          if ((!freshRoom?.turn_player || freshRoom.turn_player === '') && names.length > 0 && hostStatus) {
+          console.log('freshRoom turn_player:', freshRoom?.turn_player, 'names:', names)
+          if ((!freshRoom?.turn_player || freshRoom.turn_player === '') && names.length > 0) {
+            const firstPlayer = [...names].sort()[0]
             await supabase.from('rooms')
-              .update({ turn_player: names[0] })
+              .update({ turn_player: firstPlayer })
               .eq('code', code)
-            setTurnPlayer(names[0])
+            setTurnPlayer(firstPlayer)
           }
         }
 
