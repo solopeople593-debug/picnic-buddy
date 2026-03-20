@@ -159,28 +159,20 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     return () => { supabase.removeChannel(channel) }
   }, [code])
 
-  // Переключаем ход на следующего игрока
   const nextTurn = async (currentPlayers: string[], currentTurn: string, hostName: string) => {
     if (isSolo) return
-    // Список игроков без хоста
     const gamePlayers = currentPlayers.filter(p => p !== hostName)
     if (gamePlayers.length === 0) return
-
-    // Хост всегда первый, потом игроки по кругу
     if (!currentTurn || currentTurn === '') {
-      // Первый ход — хост
       await supabase.from('rooms').update({ turn_player: hostName }).eq('code', code)
     } else if (currentTurn === hostName) {
-      // После хоста — первый игрок
       await supabase.from('rooms').update({ turn_player: gamePlayers[0] }).eq('code', code)
     } else {
       const idx = gamePlayers.indexOf(currentTurn)
-      const next = gamePlayers[(idx + 1) % gamePlayers.length]
-      // После последнего игрока — снова хост
       if (idx === gamePlayers.length - 1) {
         await supabase.from('rooms').update({ turn_player: hostName }).eq('code', code)
       } else {
-        await supabase.from('rooms').update({ turn_player: next }).eq('code', code)
+        await supabase.from('rooms').update({ turn_player: gamePlayers[idx + 1] }).eq('code', code)
       }
     }
   }
@@ -219,7 +211,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     }
   }
 
-  // Хост даёт подсказку (первый ход или после круга)
   const sendHostHint = async () => {
     if (!inputValue.trim() || isChecking) return
     const text = inputValue.trim().toUpperCase()
@@ -230,7 +221,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         room_code: code, player_name: t.hostName,
         item: text, status: 'approved', is_allowed: true
       }])
-      // После подсказки хоста — ход первого игрока
       const gamePlayers = players.filter(p => p !== playerName)
       if (gamePlayers.length > 0) {
         await supabase.from('rooms').update({ turn_player: gamePlayers[0] }).eq('code', code)
@@ -287,9 +277,9 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         if (!result.allowed) await handleLoseLive(playerName)
       }
 
-      // Переключаем ход
       if (!isSolo) {
-        await nextTurn(players, turnPlayer, isHost ? playerName : players.find(p => localStorage.getItem('picnic_is_host') === 'true') || players[0])
+        const hostName = isHost ? playerName : players[0]
+        await nextTurn(players, turnPlayer, hostName)
       }
 
       const { data: freshMoves } = await supabase.from('moves').select('*').eq('room_code', code).order('created_at', { ascending: true })
@@ -320,7 +310,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const showEliminated = isEliminated && !isSolo && !isVictory
   const showSurrender = hasSurrendered && !isVictory && !isGameOver
 
-  // Определяем чей ход для плейсхолдера
   const getPlaceholder = () => {
     if (isSpilled) return t.spilled
     if (isChecking) return '...'
@@ -332,14 +321,17 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     <div className="h-screen bg-[#F0FFF4] flex flex-col p-6 relative font-sans overflow-hidden">
 
       {/* HEADER */}
-      <div className="flex justify-between items-center z-10">
-        {/* Кнопка выхода слева */}
+      <div className="flex justify-between items-center z-10 relative">
         <button onClick={() => router.push('/')} className="text-xl opacity-20 hover:opacity-60 transition-opacity">←</button>
 
-        {/* ПИКНИК БАДДИ по центру — кликабельный */}
-        <button onClick={() => router.push('/')} className="font-black text-sm text-[#1A5319] opacity-40 hover:opacity-100 transition-opacity uppercase tracking-widest">
-          {t.title}
-        </button>
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
+          <button onClick={() => router.push('/')} className="font-black text-sm text-[#1A5319] opacity-40 hover:opacity-100 transition-opacity uppercase tracking-widest">
+            {t.title}
+          </button>
+          <span className="text-[10px] font-black text-[#1A5319] opacity-20 tracking-widest">
+            {code && code !== 'undefined' ? code : ''}
+          </span>
+        </div>
 
         <div className="flex gap-3 items-center">
           {!isManual && (
@@ -426,14 +418,11 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       {/* INPUT */}
       {!hasSurrendered && !isGameOver && !isVictory && !isEliminated && (
         <div className="fixed bottom-8 left-6 right-6 z-40 space-y-2">
-
-          {/* Плейсхолдер "ход игрока X" если не твой ход */}
           {!isMyTurn && turnPlayer && (
             <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-center text-[10px] font-black text-[#1A5319] opacity-40 uppercase tracking-widest">
               {t.notYourTurn(turnPlayer)}
             </motion.div>
           )}
-
           <div className="flex gap-2">
             <input
               value={inputValue}
@@ -443,8 +432,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
               className="flex-1 bg-white p-5 rounded-[22px] shadow-2xl font-bold outline-none border-none ring-offset-2 focus:ring-2 ring-green-300 disabled:opacity-40 transition-all"
               placeholder={getPlaceholder()}
             />
-
-            {/* Кнопка отправки */}
             <button
               onClick={isHost && isManual && turnPlayer === playerName ? sendHostHint : handleSend}
               disabled={!inputValue.trim() || isSpilled || isChecking || (!isMyTurn && !isSolo)}
@@ -452,8 +439,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             >
               {isChecking ? '⏳' : '🧺'}
             </button>
-
-            {/* Кнопка "УГАДАЛ" для хоста в мануал режиме */}
             {isHost && isManual && (
               <button
                 onClick={() => {
