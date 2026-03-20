@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import Groq from "groq-sdk"
 import { createClient } from "@supabase/supabase-js"
 
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -9,13 +10,7 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY
-    console.log("GEMINI_API_KEY exists:", !!apiKey)
-    console.log("GEMINI_API_KEY length:", apiKey?.length)
-
-    const genAI = new GoogleGenerativeAI(apiKey || "")
     const { item, roomCode, lang, needHint } = await req.json()
-    console.log("Request received:", { item, roomCode, lang })
 
     const { data: room } = await supabase
       .from('rooms')
@@ -23,27 +18,28 @@ export async function POST(req: Request) {
       .eq('code', roomCode)
       .single()
 
-    console.log("Room data:", room)
     const rule = room?.secret_rule || '???'
-
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" })
 
     const prompt = `You are the host of the game "I'm going on a picnic". Language: ${lang}.
 Secret rule: "${rule}".
 Player wants to bring: "${item}".
-Does this item fit the secret rule?
-${needHint ? `Also write a very short witty hint in language ${lang} (max 6 words, do NOT reveal the rule).` : ''}
+Does this item fit the secret rule? Be strict and consistent.
+${needHint ? `Also write a very short witty hint in language ${lang} (max 6 words, do NOT reveal the rule directly).` : ''}
 Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "hint": "short hint or null"}`
 
-    console.log("Calling Gemini...")
-    const result = await model.generateContent(prompt)
-    const text = result.response.text().replace(/```json|```/g, "").trim()
-    console.log("Gemini response:", text)
-    const parsed = JSON.parse(text)
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+    })
+
+    const text = completion.choices[0].message.content || ""
+    const clean = text.replace(/```json|```/g, "").trim()
+    const parsed = JSON.parse(clean)
 
     return NextResponse.json({ allowed: !!parsed.allowed, hint: parsed.hint || null })
   } catch (error: any) {
-    console.error("API Error details:", error?.message, error?.status)
+    console.error("Check API Error:", error?.message)
     return NextResponse.json({ allowed: false, hint: null }, { status: 500 })
   }
 }

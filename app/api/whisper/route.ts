@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import Groq from "groq-sdk"
 import { createClient } from "@supabase/supabase-js"
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -12,7 +12,6 @@ export async function POST(req: Request) {
   try {
     const { roomCode, lang } = await req.json()
 
-    // Берём правило и последние ходы
     const { data: room } = await supabase
       .from('rooms')
       .select('secret_rule')
@@ -29,27 +28,29 @@ export async function POST(req: Request) {
     const rule = room?.secret_rule || '???'
     const recentItems = moves?.map(m => `${m.item} (${m.is_allowed ? '✅' : '❌'})`).join(', ') || ''
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" })
-
     const prompt = `You are secretly helping the HOST of the game "I'm going on a picnic".
 Secret rule: "${rule}"
 Recent items players tried: ${recentItems}
-
-Analyze: are players getting close to guessing the rule? 
+Analyze: are players getting close to guessing the rule?
 Give the host a SHORT whisper in language ${lang} (max 10 words):
 - If players are getting close: warn the host subtly
 - If players are far off: reassure the host
 - Never reveal the rule directly
+Answer ONLY in JSON no markdown: {"whisper": "short message", "danger": true or false}`
 
-Answer ONLY in JSON no markdown: {"whisper": "short message to host", "danger": true or false}`
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+    })
 
-    const result = await model.generateContent(prompt)
-    const text = result.response.text().replace(/```json|```/g, "").trim()
-    const parsed = JSON.parse(text)
+    const text = completion.choices[0].message.content || ""
+    const clean = text.replace(/```json|```/g, "").trim()
+    const parsed = JSON.parse(clean)
 
     return NextResponse.json({ whisper: parsed.whisper, danger: !!parsed.danger })
-  } catch (error) {
-    console.error("Whisper API Error:", error)
+  } catch (error: any) {
+    console.error("Whisper API Error:", error?.message)
     return NextResponse.json({ whisper: null, danger: false }, { status: 500 })
   }
 }
