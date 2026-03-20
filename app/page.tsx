@@ -46,7 +46,7 @@ export default function HomePage() {
       assistDesc: "AI helps with concept and whispers hints during the game",
       classic: "YOU GUESS", aiGuesses: "AI GUESSES",
       classicDesc: "AI makes a concept — you try to guess it",
-      aiGuessesDesc: "You set a word — AI tries to guess it (like Akinator",
+      aiGuessesDesc: "You set a word — AI tries to guess it (like Akinator)",
       easy: "EASY", medium: "MEDIUM", hard: "HARD",
       easyDesc: "One word, simple category",
       mediumDesc: "Word combo, requires thinking",
