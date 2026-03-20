@@ -20,16 +20,26 @@ export default function HomePage() {
   }[lang]
 
   const handleStart = async () => {
-    if (!name) return alert(lang === 'RU' ? "Введите имя!" : "Enter name!")
+    if (!name.trim()) return alert(lang === 'RU' ? "Введите имя!" : "Enter name!")
+    
+    // Генерим код ПЕРЕД вставкой
     const newCode = Math.random().toString(36).substring(2, 7).toUpperCase()
+    
     localStorage.setItem('picnic_player_name', name)
     localStorage.setItem('picnic_is_host', 'true')
     
+    // Убрал sub_mode, чтобы не было DB Error, если ты не менял таблицу
     const { error } = await supabase.from('rooms').insert([{ 
-      code: newCode, status: 'setup', sub_mode: multiMode 
+      code: newCode, 
+      status: 'setup'
     }])
-    if (error) return alert("DB Error")
 
+    if (error) {
+        console.error(error)
+        return alert("DB Error: " + error.message)
+    }
+
+    // Редирект с четко заданным кодом
     router.push(`/game/${newCode}?mode=${isMulti ? multiMode : 'solo'}&lang=${lang}`)
   }
 
@@ -37,6 +47,7 @@ export default function HomePage() {
     if (!name || !code) return alert("Name & Code!")
     const cleanCode = code.trim().toUpperCase()
     const { data } = await supabase.from('rooms').select('*').eq('code', cleanCode).single()
+    
     if (!data) return alert("Room not found!")
     
     localStorage.setItem('picnic_player_name', name)
