@@ -10,13 +10,45 @@ export default function SetupPage({ params }: { params: Promise<{ code: string }
   const searchParams = useSearchParams()
   const mode = searchParams.get('mode') || 'manual'
   const lang = searchParams.get('lang') || 'RU'
+  // Берём subMode из URL (передаётся из главного меню)
+  const subFromUrl = searchParams.get('sub') || 'hardcore'
 
   const [rule, setRule] = useState('')
-  const [subMode, setSubMode] = useState('hardcore')
+  const [subMode, setSubMode] = useState(subFromUrl)
   const [isLoading, setIsLoading] = useState(false)
   const [isReady, setIsReady] = useState(false)
 
-  // Для соло — ИИ сам генерит концепт автоматически
+  const t: any = {
+    RU: {
+      setup: 'НАСТРОЙКА ПРАВИЛА',
+      placeholder: 'Твоё правило...',
+      start: 'ПОГНАЛИ 🚀',
+      thinking: 'ИИ придумывает концепт...',
+      ready: 'Концепт готов! Удачи 🍀',
+    },
+    EN: {
+      setup: 'SETUP RULE',
+      placeholder: 'Your rule...',
+      start: 'START 🚀',
+      thinking: 'AI is thinking...',
+      ready: 'Concept ready! Good luck 🍀',
+    },
+    UA: {
+      setup: 'НАЛАШТУВАННЯ ПРАВИЛА',
+      placeholder: 'Твоє правило...',
+      start: 'ПОЇХАЛИ 🚀',
+      thinking: 'ШІ придумує концепт...',
+      ready: 'Концепт готовий! Удачі 🍀',
+    },
+    LV: {
+      setup: 'NOTEIKUMA IESTATĪŠANA',
+      placeholder: 'Tavs noteikums...',
+      start: 'SĀKAM 🚀',
+      thinking: 'AI domā...',
+      ready: 'Koncepts gatavs! Veiksmi 🍀',
+    },
+  }[lang]
+
   useEffect(() => {
     if (mode === 'solo') {
       generateSoloConcept()
@@ -35,9 +67,13 @@ export default function SetupPage({ params }: { params: Promise<{ code: string }
       setRule(data.suggestion)
       setIsReady(true)
     } catch {
-      // Фоллбэк если API упало
-      const fallback = lang === 'RU' ? 'Слова на букву А' : 'Words starting with A'
-      setRule(fallback)
+      const fallbacks: any = {
+        RU: 'Слова на букву А',
+        EN: 'Words starting with A',
+        UA: 'Слова на букву А',
+        LV: 'Vārdi ar burtu A',
+      }
+      setRule(fallbacks[lang] || fallbacks.RU)
       setIsReady(true)
     } finally {
       setIsLoading(false)
@@ -55,7 +91,13 @@ export default function SetupPage({ params }: { params: Promise<{ code: string }
       const data = await res.json()
       setRule(data.suggestion)
     } catch {
-      setRule(lang === 'RU' ? 'Слова, в которых есть буква А' : 'Words containing A')
+      const fallbacks: any = {
+        RU: 'Слова с двумя одинаковыми буквами',
+        EN: 'Words with double letters',
+        UA: 'Слова з двома однаковими буквами',
+        LV: 'Vārdi ar diviem vienādiem burtiem',
+      }
+      setRule(fallbacks[lang] || fallbacks.RU)
     } finally {
       setIsLoading(false)
     }
@@ -71,23 +113,18 @@ export default function SetupPage({ params }: { params: Promise<{ code: string }
     router.push(`/game/${code}?mode=${mode}&sub=${subMode}&lang=${lang}`)
   }
 
-  // СОЛО — минималистичный экран загрузки
+  // СОЛО — экран загрузки
   if (mode === 'solo') {
     return (
       <div className="h-screen bg-[#F0FFF4] flex flex-col items-center justify-center p-6 font-sans">
         <div className="text-center space-y-6">
-            <div className={`text-8xl ${isLoading ? 'animate-bounce' : ''}`}>🧺</div>
+          <div className={`text-8xl ${isLoading ? 'animate-bounce' : ''}`}>🧺</div>
           <p className="font-black text-[#1A5319] uppercase text-sm tracking-widest">
-            {isLoading
-              ? (lang === 'RU' ? 'ИИ придумывает концепт...' : 'AI is thinking...')
-              : (lang === 'RU' ? 'Концепт готов! Удачи 🍀' : 'Concept ready! Good luck 🍀')}
+            {isLoading ? t.thinking : t.ready}
           </p>
           {isReady && (
-            <button
-              onClick={start}
-              className="mt-4 bg-[#22C55E] text-white px-12 py-5 rounded-[22px] font-black uppercase shadow-xl active:scale-95 transition-all tracking-widest"
-            >
-              {lang === 'RU' ? 'ПОГНАЛИ 🚀' : 'START 🚀'}
+            <button onClick={start} className="mt-4 bg-[#22C55E] text-white px-12 py-5 rounded-[22px] font-black uppercase shadow-xl active:scale-95 transition-all tracking-widest">
+              {t.start}
             </button>
           )}
         </div>
@@ -95,13 +132,11 @@ export default function SetupPage({ params }: { params: Promise<{ code: string }
     )
   }
 
-  // МАНУАЛ / AI_HOST — форма с правилом
+  // MANUAL / AI_HOST — форма
   return (
     <div className="h-screen bg-[#F0FFF4] flex flex-col items-center justify-center p-6 font-sans">
       <div className="w-full max-w-sm bg-white p-10 rounded-[40px] shadow-2xl space-y-6">
-        <h2 className="text-xl font-black text-[#1A5319] text-center uppercase">
-          {lang === 'RU' ? 'Настройка правила' : 'Setup Rule'}
-        </h2>
+        <h2 className="text-xl font-black text-[#1A5319] text-center uppercase">{t.setup}</h2>
 
         {mode === 'manual' && (
           <div className="flex p-1 bg-gray-100 rounded-2xl">
@@ -113,9 +148,9 @@ export default function SetupPage({ params }: { params: Promise<{ code: string }
         <div className="relative">
           <textarea
             value={rule}
-            onChange={(e) => setRule(e.target.value)}
+            onChange={e => setRule(e.target.value)}
             className="w-full p-5 bg-gray-50 rounded-[22px] font-bold text-sm h-32 outline-none border-none resize-none"
-            placeholder={lang === 'RU' ? "Твоё правило..." : "Your rule..."}
+            placeholder={t.placeholder}
           />
           <button onClick={suggest} disabled={isLoading} className={`absolute bottom-4 right-4 text-2xl transition-all ${isLoading ? 'animate-spin opacity-50' : 'hover:rotate-12 active:scale-90'}`}>
             {isLoading ? '⏳' : '🎲'}
@@ -123,7 +158,7 @@ export default function SetupPage({ params }: { params: Promise<{ code: string }
         </div>
 
         <button onClick={start} disabled={!rule} className="w-full bg-[#22C55E] text-white py-5 rounded-[22px] font-black uppercase shadow-xl active:scale-95 transition-all disabled:opacity-40 disabled:scale-100">
-          {lang === 'RU' ? 'ПОГНАЛИ 🚀' : 'START 🚀'}
+          {t.start}
         </button>
       </div>
     </div>
