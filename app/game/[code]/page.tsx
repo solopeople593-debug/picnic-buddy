@@ -566,17 +566,12 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           .update({ is_allowed: result.allowed }).eq('id', move.id)
         if (!result.allowed) await handleLoseLive(playerName)
 
-        // Получаем актуальный список игроков из базы
-        const { data: freshMoves } = await supabase
-          .from('moves').select('player_name').eq('room_code', code)
-          .order('created_at', { ascending: true })
+        // ✅ Берём игроков из lives, а не из moves
+const { data: freshRoom2 } = await supabase
+  .from('rooms').select('lives').eq('code', code).single()
 
-        const allPlayers = Array.from(new Set(
-          freshMoves?.map((m: any) => m.player_name)
-            .filter((n: string) => n !== t.hostName) || []
-        )) as string[]
-
-        const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
+const allPlayers = Object.keys(freshRoom2?.lives || {})
+const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
 
         if (activePlayers.length > 0) {
           const currentIdx = activePlayers.indexOf(playerName)
