@@ -14,6 +14,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const langParam = searchParams.get('lang') || 'RU'
   const lang = (['RU', 'EN', 'UA', 'LV'].includes(langParam) ? langParam : 'RU') as SupportedLangs
   const mode = searchParams.get('mode') || 'solo'
+  const subMode = searchParams.get('sub') || 'hardcore'
 
   const [moves, setMoves] = useState<any[]>([])
   const [players, setPlayers] = useState<string[]>([])
@@ -25,16 +26,44 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const [hasSurrendered, setHasSurrendered] = useState(false)
   const [revealReason, setRevealReason] = useState('???')
   const [playerName, setPlayerName] = useState('')
+  const [whisper, setWhisper] = useState<string | null>(null)
+  const [whisperDanger, setWhisperDanger] = useState(false)
+  const [movesSinceHint, setMovesSinceHint] = useState(0)
 
   const isSolo = mode === 'solo'
+  const isAssist = mode === 'manual' && subMode === 'assist'
   const myLives = playerLives[playerName] ?? 3
   const isSpilled = spilledPlayers[playerName] ?? false
 
   const t: any = {
-    RU: { placeholder: "Я БЕРУ С СОБОЙ...", surrender: "СДАТЬСЯ", spilled: "ТЫ ПРОЛИЛ ЛИМОНАД!", finish: "ФИНИШ!", concept: "КОНЦЕПТ ПОХОДА БЫЛ:", menu: "В ГЛАВНОЕ МЕНЮ", hostName: "ВЕДУЩИЙ ИИ", campers: "В ПОХОДЕ:", spilledMsg: (n: string) => `🥤 ${n} ПРОЛИЛ ЛИМОНАД!` },
-    EN: { placeholder: "I'M TAKING...", surrender: "SURRENDER", spilled: "YOU SPILLED LEMONADE!", finish: "FINISHED!", concept: "THE CONCEPT WAS:", menu: "MAIN MENU", hostName: "HOST AI", campers: "CAMPERS:", spilledMsg: (n: string) => `🥤 ${n} SPILLED LEMONADE!` },
-    UA: { placeholder: "Я БЕРУ З СОБОЮ...", surrender: "ЗДАТИСЯ", spilled: "ТИ ПРОЛИВ ЛИМОНАД!", finish: "ФІНІШ!", concept: "КОНЦЕПТ ПОХОДУ БУВ:", menu: "В ГОЛОВНЕ МЕНЮ", hostName: "ВЕДУЧИЙ ШІ", campers: "У ПОХОДІ:", spilledMsg: (n: string) => `🥤 ${n} ПРОЛИВ ЛІМОНАД!` },
-    LV: { placeholder: "ES ŅEMU LĪDZI...", surrender: "PADOTIES", spilled: "TU IZLĒJI LIMONĀDI!", finish: "FINIŠS!", concept: "PĀRGĀJIENA KONCEPTS BIJA:", menu: "UZ GALVENO IZVĒLNI", hostName: "VADĪТĀJS AI", campers: "DALĪBNIEKI:", spilledMsg: (n: string) => `🥤 ${n} IZLĒJA LIMONĀDI!` }
+    RU: {
+      placeholder: "Я БЕРУ С СОБОЙ...", surrender: "СДАТЬСЯ", spilled: "ТЫ ПРОЛИЛ ЛИМОНАД!",
+      finish: "ФИНИШ!", concept: "КОНЦЕПТ ПОХОДА БЫЛ:", menu: "В ГЛАВНОЕ МЕНЮ",
+      hostName: "ВЕДУЩИЙ ИИ", campers: "В ПОХОДЕ:",
+      spilledMsg: (n: string) => `🥤 ${n} ПРОЛИЛ ЛИМОНАД!`,
+      whisperLabel: "🤫 ТОЛЬКО ДЛЯ ТЕБЯ:",
+    },
+    EN: {
+      placeholder: "I'M TAKING...", surrender: "SURRENDER", spilled: "YOU SPILLED LEMONADE!",
+      finish: "FINISHED!", concept: "THE CONCEPT WAS:", menu: "MAIN MENU",
+      hostName: "HOST AI", campers: "CAMPERS:",
+      spilledMsg: (n: string) => `🥤 ${n} SPILLED LEMONADE!`,
+      whisperLabel: "🤫 ONLY FOR YOU:",
+    },
+    UA: {
+      placeholder: "Я БЕРУ З СОБОЮ...", surrender: "ЗДАТИСЯ", spilled: "ТИ ПРОЛИВ ЛІМОНАД!",
+      finish: "ФІНІШ!", concept: "КОНЦЕПТ ПОХОДУ БУВ:", menu: "В ГОЛОВНЕ МЕНЮ",
+      hostName: "ВЕДУЧИЙ ШІ", campers: "У ПОХОДІ:",
+      spilledMsg: (n: string) => `🥤 ${n} ПРОЛИВ ЛІМОНАД!`,
+      whisperLabel: "🤫 ТІЛЬКИ ДЛЯ ТЕБЕ:",
+    },
+    LV: {
+      placeholder: "ES ŅEMU LĪDZI...", surrender: "PADOTIES", spilled: "TU IZLĒJI LIMONĀDI!",
+      finish: "FINIŠS!", concept: "PĀRGĀJIENA KONCEPTS BIJA:", menu: "UZ GALVENO IZVĒLNI",
+      hostName: "VADĪТĀJS AI", campers: "DALĪBNIEKI:",
+      spilledMsg: (n: string) => `🥤 ${n} IZLĒJA LIMONĀDI!`,
+      whisperLabel: "🤫 TIKAI TEV:",
+    },
   }[lang]
 
   useEffect(() => {
@@ -49,10 +78,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       if (room) {
         setRevealReason(room.secret_rule || '???')
         if (room.status === 'finished') setIsGameOver(true)
-
-        // Загружаем лимоны из базы
         const livesData: Record<string, number> = room.lives || {}
-        // Если игрока ещё нет — добавляем с 3 жизнями
         if (!(name in livesData)) {
           livesData[name] = 3
           await supabase.from('rooms').update({ lives: livesData }).eq('code', code)
@@ -60,10 +86,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         setPlayerLives(livesData)
       }
 
-      const { data: mv } = await supabase.from('moves').select('*').eq('room_code', code).order('created_at', { ascending: true })
+      const { data: mv } = await supabase
+        .from('moves').select('*').eq('room_code', code).order('created_at', { ascending: true })
       if (mv) {
         setMoves(mv)
-        const names = Array.from(new Set(mv.map((m: any) => m.player_name).filter((n: string) => n !== t.hostName))) as string[]
+        const names = Array.from(new Set(
+          mv.map((m: any) => m.player_name).filter((n: string) => n !== t.hostName)
+        )) as string[]
         if (!names.includes(name)) names.push(name)
         setPlayers(names)
       }
@@ -82,6 +111,29 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
     return () => { supabase.removeChannel(channel) }
   }, [code])
+
+  // Нашёптывание для хоста в assist моде — каждые 3 хода
+  const checkWhisper = async (movesCount: number) => {
+    if (!isAssist || !isHost) return
+    if (movesCount % 3 !== 0) return
+
+    try {
+      const res = await fetch('/api/whisper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomCode: code, lang })
+      })
+      const data = await res.json()
+      if (data.whisper) {
+        setWhisper(data.whisper)
+        setWhisperDanger(data.danger)
+        // Прячем через 6 секунд
+        setTimeout(() => setWhisper(null), 6000)
+      }
+    } catch {
+      // молча игнорируем
+    }
+  }
 
   const handleSend = async () => {
     if (!inputValue.trim() || isGameOver || isSpilled || code === 'undefined') return
@@ -105,52 +157,70 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       const result = await res.json()
       await supabase.from('moves').update({ is_allowed: result.allowed }).eq('id', move.id)
 
-      // Подсказка от ИИ
       if (result.hint) {
         await supabase.from('moves').insert([{
-          room_code: code, player_name: t.hostName, item: result.hint, status: 'approved', is_allowed: true
+          room_code: code, player_name: t.hostName,
+          item: result.hint, status: 'approved', is_allowed: true
         }])
       }
 
       if (!result.allowed) {
-        // Берём актуальные лимоны из базы
-        const { data: room } = await supabase.from('rooms').select('lives').eq('code', code).single()
-        const currentLives: Record<string, number> = room?.lives || {}
-        const myCurrentLives = currentLives[playerName] ?? 3
-        const newLives = myCurrentLives - 1
-        const updatedLives = { ...currentLives, [playerName]: Math.max(newLives, 0) }
+        await handleLoseLive(playerName)
+      }
+    }
 
-        await supabase.from('rooms').update({ lives: updatedLives }).eq('code', code)
-        setPlayerLives(updatedLives)
+    // Assist мод — ИИ автоматически фильтрует слова
+    if (isAssist && move) {
+      const res = await fetch('/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: text, roomCode: code, lang, needHint: false })
+      })
+      const result = await res.json()
+      await supabase.from('moves').update({
+        status: 'approved',
+        is_allowed: result.allowed
+      }).eq('id', move.id)
 
-        if (newLives <= 0) {
-          if (isSolo) {
-            // СОЛО — игра окончена
-            setIsGameOver(true)
-            await supabase.from('rooms').update({ status: 'finished' }).eq('code', code)
-          } else {
-            // МУЛЬТИ — пишем в чат что игрок пролил лимонад
-            await supabase.from('moves').insert([{
-              room_code: code,
-              player_name: t.hostName,
-              item: t.spilledMsg(playerName),
-              status: 'approved',
-              is_allowed: true
-            }])
+      if (!result.allowed) {
+        await handleLoseLive(playerName)
+      }
+    }
 
-            // Помечаем игрока как пролившего (заблокировать ввод на 8 сек)
-            setSpilledPlayers(prev => ({ ...prev, [playerName]: true }))
+    // Проверяем нужно ли нашёптывать
+    const newCount = movesSinceHint + 1
+    setMovesSinceHint(newCount)
+    await checkWhisper(newCount)
+  }
 
-            // Через 8 секунд восстанавливаем
-            setTimeout(async () => {
-              const { data: freshRoom } = await supabase.from('rooms').select('lives').eq('code', code).single()
-              const freshLives = freshRoom?.lives || {}
-              freshLives[playerName] = 3
-              await supabase.from('rooms').update({ lives: freshLives }).eq('code', code)
-              setPlayerLives(freshLives)
-              setSpilledPlayers(prev => ({ ...prev, [playerName]: false }))
-            }, 8000)
-          }
+  const handleLoseLive = async (targetPlayer: string) => {
+    const { data: room } = await supabase.from('rooms').select('lives').eq('code', code).single()
+    const currentLives: Record<string, number> = room?.lives || {}
+    const newCount = Math.max((currentLives[targetPlayer] ?? 3) - 1, 0)
+    const updated = { ...currentLives, [targetPlayer]: newCount }
+    await supabase.from('rooms').update({ lives: updated }).eq('code', code)
+    setPlayerLives(updated)
+
+    if (newCount <= 0) {
+      if (isSolo) {
+        setIsGameOver(true)
+        await supabase.from('rooms').update({ status: 'finished' }).eq('code', code)
+      } else {
+        await supabase.from('moves').insert([{
+          room_code: code, player_name: t.hostName,
+          item: t.spilledMsg(targetPlayer), status: 'approved', is_allowed: true
+        }])
+
+        if (targetPlayer === playerName) {
+          setSpilledPlayers(prev => ({ ...prev, [playerName]: true }))
+          setTimeout(async () => {
+            const { data: fr } = await supabase.from('rooms').select('lives').eq('code', code).single()
+            const fl = fr?.lives || {}
+            fl[targetPlayer] = 3
+            await supabase.from('rooms').update({ lives: fl }).eq('code', code)
+            setPlayerLives(fl)
+            setSpilledPlayers(prev => ({ ...prev, [playerName]: false }))
+          }, 8000)
         }
       }
     }
@@ -158,35 +228,14 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
   const judge = async (id: string, allowed: boolean) => {
     await supabase.from('moves').update({ status: 'approved', is_allowed: allowed }).eq('id', id)
-
-    // В мануал режиме хост убирает жизнь если не разрешил
-    if (!allowed && mode === 'manual') {
+    if (!allowed) {
       const { data: move } = await supabase.from('moves').select('player_name').eq('id', id).single()
-      if (!move) return
-      const { data: room } = await supabase.from('rooms').select('lives').eq('code', code).single()
-      const currentLives: Record<string, number> = room?.lives || {}
-      const targetPlayer = move.player_name
-      const newCount = Math.max((currentLives[targetPlayer] ?? 3) - 1, 0)
-      const updated = { ...currentLives, [targetPlayer]: newCount }
-      await supabase.from('rooms').update({ lives: updated }).eq('code', code)
-
-      if (newCount <= 0) {
-        await supabase.from('moves').insert([{
-          room_code: code,
-          player_name: t.hostName,
-          item: t.spilledMsg(targetPlayer),
-          status: 'approved',
-          is_allowed: true
-        }])
-        // Восстанавливаем через 8 сек
-        setTimeout(async () => {
-          const { data: fr } = await supabase.from('rooms').select('lives').eq('code', code).single()
-          const fl = fr?.lives || {}
-          fl[targetPlayer] = 3
-          await supabase.from('rooms').update({ lives: fl }).eq('code', code)
-        }, 8000)
-      }
+      if (move) await handleLoseLive(move.player_name)
     }
+    // После каждого судейства — проверяем нашёптывание
+    const newCount = movesSinceHint + 1
+    setMovesSinceHint(newCount)
+    await checkWhisper(newCount)
   }
 
   return (
@@ -205,7 +254,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         </div>
       </div>
 
-      {/* CAMPERS LIST с лимонами */}
+      {/* CAMPERS */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 border-b border-green-100 mt-2">
         <span className="text-[9px] font-black opacity-30 uppercase pt-1">{t.campers}</span>
         {players.map((p, i) => {
@@ -214,19 +263,33 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           return (
             <div key={i} className={`px-3 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap flex items-center gap-1 ${pSpilled ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-white/50 text-[#1A5319] border-green-200/50'}`}>
               {pSpilled ? '🥤' : '●'} {p}
-              {!pSpilled && <span className="opacity-50">{'🍋'.repeat(pLives)}</span>}
+              {!pSpilled && <span className="opacity-50">{'🍋'.repeat(Math.max(pLives, 0))}</span>}
             </div>
           )
         })}
       </div>
 
-      {/* CHAT AREA */}
+      {/* WHISPER — только хосту в assist моде */}
+      <AnimatePresence>
+        {whisper && isHost && isAssist && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`mt-3 px-5 py-3 rounded-[18px] text-[11px] font-bold border-2 ${whisperDanger ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'}`}
+          >
+            <span className="opacity-50 text-[9px] uppercase tracking-widest block mb-1">{t.whisperLabel}</span>
+            {whisper}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CHAT */}
       <div className="flex-1 overflow-y-auto space-y-4 py-8 pb-40 no-scrollbar">
         {moves.map((m, i) => {
           const isSpillMsg = m.player_name === t.hostName && m.item.includes('🥤')
           const isHintMsg = m.player_name === t.hostName && !isSpillMsg
 
-          // Сообщение о проливании — особый стиль по центру
           if (isSpillMsg) {
             return (
               <div key={m.id || i} className="flex justify-center">
@@ -241,7 +304,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             <div key={m.id || i} className={`flex flex-col ${m.player_name === playerName ? 'items-end' : 'items-start'}`}>
               <div className={`p-4 rounded-[25px] max-w-[80%] shadow-sm relative ${m.player_name === playerName ? 'bg-black text-white' : isHintMsg ? 'bg-green-100 text-green-900 border-2 border-green-200' : 'bg-white text-black'}`}>
 
-                {/* ✅/❌ */}
                 {m.status === 'approved' && !isHintMsg && (
                   <div className={`absolute -top-1 ${m.player_name === playerName ? '-left-2' : '-right-2'} text-[10px] bg-white rounded-full shadow-md w-5 h-5 flex items-center justify-center`}>
                     {m.is_allowed ? '✅' : '❌'}
@@ -251,8 +313,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                 <p className="text-[8px] font-bold opacity-40 mb-1 uppercase tracking-widest">{m.player_name}</p>
                 <p className={`font-bold italic ${m.status === 'approved' && !m.is_allowed ? 'line-through opacity-30' : ''}`}>"{m.item}"</p>
 
-                {/* JUDGE BUTTONS для мануал хоста */}
-                {isHost && mode === 'manual' && m.status === 'pending' && m.player_name !== playerName && (
+                {/* Кнопки судьи — только в hardcore, в assist ИИ сам решает */}
+                {isHost && mode === 'manual' && subMode === 'hardcore' && m.status === 'pending' && m.player_name !== playerName && (
                   <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
                     <button onClick={() => judge(m.id, true)} className="bg-green-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black">✅ OK</button>
                     <button onClick={() => judge(m.id, false)} className="bg-red-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black">❌ NO</button>
@@ -265,7 +327,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         <div className="pt-10 pb-4 text-center opacity-10 font-black uppercase tracking-[0.3em] text-[9px]">MADE BY SOLO</div>
       </div>
 
-      {/* INPUT BAR */}
+      {/* INPUT */}
       {!hasSurrendered && !isGameOver && (
         <div className="fixed bottom-8 left-6 right-6 flex gap-2 z-40">
           <input
@@ -300,7 +362,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         )}
       </AnimatePresence>
 
-      {/* OVERLAY: SPILLED (только в соло) */}
+      {/* OVERLAY: SPILLED (только соло) */}
       <AnimatePresence>
         {isSolo && isSpilled && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[60] bg-yellow-400/90 flex items-center justify-center p-10 text-center backdrop-blur-sm">
