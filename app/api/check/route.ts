@@ -22,10 +22,17 @@ export async function POST(req: Request) {
 
     const prompt = `You are the host of the game "I'm going on a picnic". Language: ${lang}.
 Secret rule: "${rule}".
-Player wants to bring: "${item}".
-Does this item fit the secret rule? Be strict and consistent.
+Player input: "${item}".
+
+First check: is the player trying to GUESS THE RULE ITSELF (not bring an item, but guess the concept)?
+- If yes and they are correct or very close: set guessed=true
+- If yes but wrong: set guessed=false, allowed=false
+
+Then check: does the item fit the secret rule?
+
 ${needHint ? `Also write a very short witty hint in language ${lang} (max 6 words, do NOT reveal the rule directly).` : ''}
-Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "hint": "short hint or null"}`
+
+Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "guessed": true or false, "hint": "short hint or null"}`
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
@@ -37,9 +44,13 @@ Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "hint": "shor
     const clean = text.replace(/```json|```/g, "").trim()
     const parsed = JSON.parse(clean)
 
-    return NextResponse.json({ allowed: !!parsed.allowed, hint: parsed.hint || null })
+    return NextResponse.json({
+      allowed: !!parsed.allowed,
+      guessed: !!parsed.guessed,
+      hint: parsed.hint || null
+    })
   } catch (error: any) {
     console.error("Check API Error:", error?.message)
-    return NextResponse.json({ allowed: false, hint: null }, { status: 500 })
+    return NextResponse.json({ allowed: false, guessed: false, hint: null }, { status: 500 })
   }
 }
