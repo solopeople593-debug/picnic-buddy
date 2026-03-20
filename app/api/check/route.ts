@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { createClient } from "@supabase/supabase-js"
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -10,32 +9,41 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { item, roomCode, lang, needHint } = await req.json()
+    const apiKey = process.env.GEMINI_API_KEY
+    console.log("GEMINI_API_KEY exists:", !!apiKey)
+    console.log("GEMINI_API_KEY length:", apiKey?.length)
 
-    // Берём секретное правило из базы
+    const genAI = new GoogleGenerativeAI(apiKey || "")
+    const { item, roomCode, lang, needHint } = await req.json()
+    console.log("Request received:", { item, roomCode, lang })
+
     const { data: room } = await supabase
       .from('rooms')
       .select('secret_rule')
       .eq('code', roomCode)
       .single()
 
+    console.log("Room data:", room)
     const rule = room?.secret_rule || '???'
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
 
     const prompt = `You are the host of the game "I'm going on a picnic". Language: ${lang}.
 Secret rule: "${rule}".
 Player wants to bring: "${item}".
-Does this item fit the secret rule? Be strict and consistent.
-${needHint ? `Also write a very short witty hint for the player in language ${lang} (max 6 words, do NOT reveal the rule directly).` : ''}
+Does this item fit the secret rule?
+${needHint ? `Also write a very short witty hint in language ${lang} (max 6 words, do NOT reveal the rule).` : ''}
 Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "hint": "short hint or null"}`
 
+    console.log("Calling Gemini...")
     const result = await model.generateContent(prompt)
     const text = result.response.text().replace(/```json|```/g, "").trim()
+    console.log("Gemini response:", text)
     const parsed = JSON.parse(text)
 
     return NextResponse.json({ allowed: !!parsed.allowed, hint: parsed.hint || null })
-  } catch (error) {
-    console.error("API Error:", error)
+  } catch (error: any) {
+    console.error("API Error details:", error?.message, error?.status)
     return NextResponse.json({ allowed: false, hint: null }, { status: 500 })
   }
 }
