@@ -1,155 +1,75 @@
 'use client'
-
 import { useState, useEffect, use } from 'react'
-// Поднимаемся на 2 уровня: из [code] -> game -> app/lib
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase' 
-import { motion, AnimatePresence } from 'framer-motion'
-import { useRouter } from 'next/navigation'
-
-// Определяем интерфейс для TypeScript
-interface Move {
-  id: number
-  player_name: string
-  item: string
-  is_allowed: boolean
-  room_code: string
-}
 
 export default function GamePage({ params }: { params: Promise<{ code: string }> }) {
-  const resolvedParams = use(params)
-  const code = resolvedParams.code.toUpperCase()
-  const router = useRouter()
-
-  const [moves, setMoves] = useState<Move[]>([])
+  const { code } = use(params)
+  const mode = useSearchParams().get('mode') // solo, ai_host, help, manual
+  
+  const [moves, setMoves] = useState<any[]>([])
   const [inputValue, setInputValue] = useState('')
-  const [playerName, setPlayerName] = useState('')
   const [isHost, setIsHost] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const playerName = typeof window !== 'undefined' ? localStorage.getItem('picnic_player_name') : 'Player'
 
   useEffect(() => {
-    const name = localStorage.getItem('picnic_player_name')
-    if (!name) {
-      router.push('/')
-      return
-    }
-    setPlayerName(name)
     setIsHost(localStorage.getItem('picnic_is_host') === 'true')
-
-    const fetchMoves = async () => {
-      const { data } = await supabase
-        .from('moves')
-        .select('*')
-        .eq('room_code', code)
-        .order('created_at', { ascending: true })
-      
-      if (data) setMoves(data as Move[])
-      setLoading(false)
-    }
-    fetchMoves()
-
-    const channel = supabase.channel(`room-${code}`)
-      .on('postgres_changes', 
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'moves', 
-          filter: `room_code=eq.${code}` 
-        }, 
-        // Здесь мы явно указываем тип для payload, чтобы не было ошибки any
-        (payload: { new: any }) => {
-          const newMove = payload.new as Move
-          setMoves(prev => {
-            if (prev.find(m => m.id === newMove.id)) return prev
-            return [...prev, newMove]
-          })
-        }
-      ).subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [code, router])
+    // Тут в идеале подписка на Supabase, но для теста оставим локальный стейт
+  }, [code])
 
   const handleSend = async () => {
     if (!inputValue.trim()) return
-    const currentItem = inputValue.trim()
+    const text = inputValue.trim()
     setInputValue('')
 
-    try {
-      const res = await fetch('/api/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: currentItem, roomCode: code })
-      })
-      const { allowed } = await res.json()
+    // 1. Для Соло или AI Host — сразу вызываем ИИ
+    let isAllowed = true
+    let status = 'approved'
 
-      await supabase.from('moves').insert({
-        room_code: code,
-        player_name: playerName,
-        item: currentItem,
-        is_allowed: allowed
-      })
-    } catch (e) {
-      console.error("Error:", e)
+    if (mode === 'solo' || mode === 'ai_host') {
+      const res = await fetch('/api/check', { method: 'POST', body: JSON.stringify({ item: text, roomCode: code }) })
+      const data = await res.json()
+      isAllowed = data.allowed
+    } else {
+      // 2. Для Manual/Help — статус "ожидание решения хоста"
+      status = 'pending'
     }
+
+    const newMove = { id: Date.now(), player_name: playerName, item: text, is_allowed: isAllowed, status: status }
+    setMoves(prev => [...prev, newMove])
   }
 
-  const isMyTurn = (moves.length % 2 === 0) ? isHost : !isHost
-
-  if (loading) return <div className="h-screen flex items-center justify-center font-bold">🧺 Loading...</div>
-
-  if (moves.length === 0 && !isHost) {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center p-10 text-center bg-white text-black">
-        <h2 className="text-2xl font-bold">Waiting for the Host to start...</h2>
-        <div className="mt-4 p-2 bg-gray-100 rounded-lg font-mono">Code: {code}</div>
-      </div>
-    )
+  const judge = (id: number, result: boolean) => {
+    setMoves(prev => prev.map(m => m.id === id ? { ...m, is_allowed: result, status: 'approved' } : m))
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white p-6 overflow-hidden text-black font-sans">
+    <div className="h-screen bg-white flex flex-col p-6 text-black">
       <div className="flex justify-between items-center mb-6">
-        <div className={`font-bold px-4 py-2 rounded-full ${isMyTurn ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-          {isMyTurn ? 'YOUR TURN' : 'WAITING'}
-        </div>
-        <div className="font-mono text-sm">ROOM: {code}</div>
+        <h1 className="font-black text-lg">🧺 {mode === 'solo' ? 'SOLO TRAINING' : `ROOM: ${code}`}</h1>
+        <div className="px-3 py-1 bg-green-100 rounded-full text-[10px] font-black text-green-700 uppercase">{mode}</div>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 mb-24 pr-2">
-        <AnimatePresence initial={false}>
-          {moves.map((move) => (
-            <motion.div
-              key={move.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`flex ${move.player_name === playerName ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`px-5 py-3 rounded-[22px] max-w-[85%] shadow-sm ${
-                move.is_allowed ? 'bg-gray-100' : 'bg-red-50 text-red-500 border border-red-100'
-              }`}>
-                <span className="text-[10px] block font-bold uppercase opacity-30 mb-1">{move.player_name}</span>
-                <span className="text-lg font-medium">{move.item} {move.is_allowed ? '✅' : '❌'}</span>
+      <div className="flex-1 overflow-y-auto space-y-4 pb-24 scrollbar-hide">
+        {moves.map((m) => (
+          <div key={m.id} className="space-y-2">
+            <div className={`p-4 rounded-3xl max-w-[85%] ${m.player_name === playerName ? 'ml-auto bg-gray-50' : 'bg-green-50 text-green-900'} ${m.status === 'approved' && !m.is_allowed ? 'border-2 border-red-200 bg-red-50' : ''}`}>
+              <p className="text-[9px] font-black uppercase opacity-30 mb-1">{m.player_name}</p>
+              <p className="font-bold">{m.item} {m.status === 'approved' ? (m.is_allowed ? '✅' : '❌') : '⏳'}</p>
+            </div>
+            {isHost && m.status === 'pending' && m.player_name !== playerName && (
+              <div className="flex gap-2 ml-4">
+                <button onClick={() => judge(m.id, true)} className="bg-green-500 text-white px-4 py-2 rounded-xl text-[10px] font-black shadow-md">ALLOW</button>
+                <button onClick={() => judge(m.id, false)} className="bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-black shadow-md">DENY</button>
               </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+            )}
+          </div>
+        ))}
       </div>
 
-      <div className="fixed bottom-10 left-6 right-6 flex gap-3">
-        <input
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && isMyTurn && handleSend()}
-          disabled={!isMyTurn}
-          placeholder={isMyTurn ? "I'm bringing..." : "Wait for turn..."}
-          className="flex-1 bg-gray-50 rounded-full px-6 py-4 outline-none focus:ring-2 ring-black disabled:opacity-30"
-        />
-        <button
-          onClick={handleSend}
-          disabled={!isMyTurn}
-          className="bg-black text-white w-14 h-14 rounded-full flex items-center justify-center disabled:bg-gray-200 active:scale-90 transition-all"
-        >
-          🧺
-        </button>
+      <div className="fixed bottom-8 left-6 right-6 flex gap-2">
+        <input value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} placeholder={mode === 'solo' ? "I'm bringing..." : "Your turn..."} className="flex-1 bg-gray-50 p-5 rounded-[24px] outline-none font-bold placeholder:text-gray-300" />
+        <button onClick={handleSend} className="bg-black text-white w-16 h-16 rounded-[24px] shadow-2xl active:scale-90 transition-all text-2xl">🧺</button>
       </div>
     </div>
   )
