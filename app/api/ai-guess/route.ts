@@ -7,11 +7,26 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-function getGroq(): Groq {
+function getKeys(): string[] {
   const keysString = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || ""
-  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0)
-  const key = keys[Math.floor(Math.random() * keys.length)]
-  return new Groq({ apiKey: key })
+  return keysString.split(',').map(k => k.trim()).filter(k => k.length > 0)
+}
+
+async function callGroq(keys: string[], prompt: string): Promise<any> {
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const groq = new Groq({ apiKey: keys[i] })
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+      })
+      return completion
+    } catch (err: any) {
+      console.warn(`AI Guess key #${i + 1} failed: ${err?.message}`)
+      if (i === keys.length - 1) throw err
+    }
+  }
 }
 
 export async function POST(req: Request) {
@@ -56,25 +71,20 @@ ${dialogHistory}
 
 === YOUR NEXT ACTION ===
 ${askedCount >= 6
-  ? `You have asked ${askedCount} questions already. Try to make a GUESS now based on all answers.`
-  : `Ask question #${askedCount + 1}. It MUST be completely different from all ${askedCount} questions above.`
+  ? `You have asked ${askedCount} questions. Make a GUESS now.`
+  : `Ask question #${askedCount + 1}. MUST be different from all ${askedCount} above.`
 }
 
 STRICT RULES:
-- If the list above contains "Это предмет или живое существо" or "Is it a living thing" or similar — DO NOT ask it again
-- Each question must explore a NEW property: size, color, material, where found, how used, shape, taste, etc.
+- NEVER repeat any question from the list above
+- Each question must explore a NEW property
 - Questions must be short (under 10 words)
-- NEVER reword or rephrase a question already asked
+- If guessing: say the exact word
 
 Respond ONLY in JSON: {"type": "question" or "guess", "text": "your question or guess in ${lang}"}`
 
-    const groq = getGroq()
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    })
-
+    const keys = getKeys()
+    const completion = await callGroq(keys, prompt)
     const text = completion.choices[0].message.content || ""
     const clean = text.replace(/```json|```/g, "").trim()
     const parsed = JSON.parse(clean)
@@ -83,7 +93,7 @@ Respond ONLY in JSON: {"type": "question" or "guess", "text": "your question or 
     console.error("AI Guess Error:", error?.message)
     return NextResponse.json({
       type: "question",
-      text: lang === 'RU' ? "Это больше человека?" : lang === 'UA' ? "Це більше за людину?" : "Is it bigger than a human?"
+      text: lang === 'RU' ? "Это больше кошки?" : lang === 'UA' ? "Це більше за кота?" : "Is it bigger than a cat?"
     })
   }
 }

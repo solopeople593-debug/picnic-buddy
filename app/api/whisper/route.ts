@@ -7,11 +7,26 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-function getGroq(): Groq {
+function getKeys(): string[] {
   const keysString = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || ""
-  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0)
-  const key = keys[Math.floor(Math.random() * keys.length)]
-  return new Groq({ apiKey: key })
+  return keysString.split(',').map(k => k.trim()).filter(k => k.length > 0)
+}
+
+async function callGroq(keys: string[], prompt: string): Promise<any> {
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const groq = new Groq({ apiKey: keys[i] })
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+      })
+      return completion
+    } catch (err: any) {
+      console.warn(`Whisper key #${i + 1} failed: ${err?.message}`)
+      if (i === keys.length - 1) throw err
+    }
+  }
 }
 
 export async function POST(req: Request) {
@@ -33,21 +48,13 @@ export async function POST(req: Request) {
 
     const prompt = `You are secretly helping the HOST of the game "I'm going on a picnic".
 Secret rule: "${rule}"
-Recent items players tried: ${recentItems}
-Analyze: are players getting close to guessing the rule?
-Give the host a SHORT whisper in language ${lang} (max 10 words):
-- If players are getting close: warn the host subtly
-- If players are far off: reassure the host
-- Never reveal the rule directly
-Answer ONLY in JSON no markdown: {"whisper": "short message", "danger": true or false}`
+Recent items: ${recentItems}
+Are players getting close to guessing the rule?
+Give host a SHORT whisper in language ${lang} (max 10 words).
+Answer ONLY in JSON: {"whisper": "short message", "danger": true or false}`
 
-    const groq = getGroq()
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
-    })
-
+    const keys = getKeys()
+    const completion = await callGroq(keys, prompt)
     const text = completion.choices[0].message.content || ""
     const clean = text.replace(/```json|```/g, "").trim()
     const parsed = JSON.parse(clean)

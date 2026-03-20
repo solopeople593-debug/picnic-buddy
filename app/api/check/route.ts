@@ -7,11 +7,26 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-function getGroq(): Groq {
+function getKeys(): string[] {
   const keysString = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || ""
-  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0)
-  const key = keys[Math.floor(Math.random() * keys.length)]
-  return new Groq({ apiKey: key })
+  return keysString.split(',').map(k => k.trim()).filter(k => k.length > 0)
+}
+
+async function callGroq(keys: string[], prompt: string, temperature = 0.2): Promise<any> {
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const groq = new Groq({ apiKey: keys[i] })
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature,
+      })
+      return completion
+    } catch (err: any) {
+      console.warn(`Check key #${i + 1} failed: ${err?.message}`)
+      if (i === keys.length - 1) throw err
+    }
+  }
 }
 
 export async function POST(req: Request) {
@@ -28,13 +43,11 @@ export async function POST(req: Request) {
       .eq('room_code', roomCode)
       .order('created_at', { ascending: true })
 
-    // Принятые слова игроков (не ИИ)
     const hostNames = ['ВЕДУЩИЙ ИИ', 'HOST AI', 'ВЕДУЧИЙ ШІ', 'VADĪTĀJS AI']
     const acceptedWords = moves
       ?.filter(m => m.is_allowed && !hostNames.includes(m.player_name))
       .map(m => m.item).join(', ') || 'none'
 
-    // Предыдущие подсказки ИИ
     const previousHints = moves
       ?.filter(m => hostNames.includes(m.player_name))
       .map(m => m.item).join(', ') || 'none'
@@ -43,7 +56,7 @@ export async function POST(req: Request) {
 Secret rule: "${rule}".
 Player wants to bring: "${item}".
 Already accepted words: ${acceptedWords}.
-Previous hints already given: ${previousHints}.
+Previous hints given: ${previousHints}.
 
 JUDGING — BE VERY STRICT:
 - Only accept items that CLEARLY and LITERALLY fit the rule.
@@ -52,26 +65,20 @@ JUDGING — BE VERY STRICT:
 - When in doubt — REJECT.
 - Be consistent with already accepted words.
 
-Step 1: Is player trying to GUESS THE RULE ITSELF (not bring an item)?
+Step 1: Is player trying to GUESS THE RULE ITSELF?
 - If yes and correct or very close → guessed=true
 - If yes but wrong → guessed=false, allowed=false
 
-Step 2: Does "${item}" CLEARLY and LITERALLY fit "${rule}"?
+Step 2: Does "${item}" CLEARLY fit "${rule}"?
 
 ${needHint ? `Step 3: Give ONE concrete noun in language ${lang} that fits the rule.
-- Must be DIFFERENT from previous hints: ${previousHints}
-- Must be a common everyday item
-- Just one word, no explanation` : ''}
+- DIFFERENT from previous hints: ${previousHints}
+- Common everyday item, just one word` : ''}
 
 Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "guessed": true or false, "hint": "one word or null"}`
 
-    const groq = getGroq()
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-    })
-
+    const keys = getKeys()
+    const completion = await callGroq(keys, prompt, 0.2)
     const text = completion.choices[0].message.content || ""
     const clean = text.replace(/```json|```/g, "").trim()
     const parsed = JSON.parse(clean)
