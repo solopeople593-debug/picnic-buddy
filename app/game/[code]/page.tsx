@@ -247,7 +247,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         <div className="flex gap-4 items-center">
           {!(mode === 'manual' && isHost) && (
             <div className="flex gap-1">
-              {[...Array(myLives)].map((_, i) => <span key={i} className="text-xl">🍋</span>)}
+              {[...Array(myLives)].map((_, i) => <span key={i} className="text-3xl">🍋</span>)}
             </div>
           )}
           <button onClick={() => setHasSurrendered(true)} className="text-[10px] font-black opacity-30 uppercase hover:opacity-100 transition-opacity">{t.surrender}</button>

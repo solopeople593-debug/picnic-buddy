@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       .single()
 
     const rule = room?.secret_rule || '???'
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
 
     const prompt = `You are the host of the game "I'm going on a picnic". Language: ${lang}.
 Secret rule: "${rule}".

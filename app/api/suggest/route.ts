@@ -7,7 +7,7 @@ export async function POST(req: Request) {
   try {
     const { lang, secret } = await req.json()
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
 
     const prompts: any = {
       RU: secret
