@@ -27,51 +27,52 @@ export async function POST(req: Request) {
       .eq('room_code', roomCode)
       .order('created_at', { ascending: true })
 
-    // Строим историю диалога правильно
     const hostNames = ['ВЕДУЩИЙ ИИ', 'HOST AI', 'ВЕДУЧИЙ ШІ', 'VADĪTĀJS AI']
+
     const dialogHistory = moves?.map(m => {
       if (hostNames.includes(m.player_name)) {
-        return `AI: ${m.item}`
+        return `AI asked: ${m.item}`
       } else {
         return `Player answered: ${m.item}`
       }
-    }).join('\n') || 'No history yet.'
+    }).join('\n') || 'Game just started.'
 
-    // Список уже заданных вопросов чтобы не повторять
     const askedQuestions = moves
       ?.filter(m => hostNames.includes(m.player_name))
-      .map(m => m.item.replace('❓ ', '').replace('🎯 ', ''))
-      .join(' | ') || 'none'
+      .map(m => m.item.replace('❓ ', '').replace('🎯 ', '').trim())
+      .filter(q => q.length > 0)
 
-    const prompt = `You are playing Akinator in language ${lang}.
-You are trying to guess a SECRET WORD that the player has in mind.
+    const askedCount = askedQuestions?.length || 0
+    const askedList = askedQuestions?.join('\n- ') || 'none'
 
-FULL DIALOGUE HISTORY:
+    const prompt = `You are playing Akinator. Language: ${lang}.
+Your goal: guess the SECRET WORD by asking yes/no questions.
+
+=== FULL HISTORY ===
 ${dialogHistory}
 
-QUESTIONS YOU ALREADY ASKED (DO NOT REPEAT THESE):
-${askedQuestions}
+=== QUESTIONS YOU ALREADY ASKED (${askedCount} total) ===
+- ${askedList}
 
-YOUR TASK:
-- Look at the full history above
-- The player's answers tell you what the word IS and IS NOT
-- Ask a NEW question that you have NOT asked before
-- Each question must narrow down the possibilities based on previous answers
-- If you are very confident (after 5+ questions) — make a GUESS
+=== YOUR NEXT ACTION ===
+${askedCount >= 6
+  ? `You have asked ${askedCount} questions already. Try to make a GUESS now based on all answers.`
+  : `Ask question #${askedCount + 1}. It MUST be completely different from all ${askedCount} questions above.`
+}
 
-RULES:
-- NEVER repeat a question from the list above
-- Ask about: category, size, color, material, where it's found, how it's used
-- Keep questions short and natural in ${lang}
-- If guessing: say the exact word
+STRICT RULES:
+- If the list above contains "Это предмет или живое существо" or "Is it a living thing" or similar — DO NOT ask it again
+- Each question must explore a NEW property: size, color, material, where found, how used, shape, taste, etc.
+- Questions must be short (under 10 words)
+- NEVER reword or rephrase a question already asked
 
-Answer ONLY in JSON: {"type": "question" or "guess", "text": "your question or guess in ${lang}"}`
+Respond ONLY in JSON: {"type": "question" or "guess", "text": "your question or guess in ${lang}"}`
 
     const groq = getGroq()
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
+      temperature: 0.7,
     })
 
     const text = completion.choices[0].message.content || ""
@@ -82,7 +83,7 @@ Answer ONLY in JSON: {"type": "question" or "guess", "text": "your question or g
     console.error("AI Guess Error:", error?.message)
     return NextResponse.json({
       type: "question",
-      text: lang === 'RU' ? "Это предмет или живое существо?" : "Is it an object or a living thing?"
+      text: lang === 'RU' ? "Это больше человека?" : lang === 'UA' ? "Це більше за людину?" : "Is it bigger than a human?"
     })
   }
 }
