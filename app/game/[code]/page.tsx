@@ -211,9 +211,16 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         if (!isSolo && !isAiGuesses) {
           const names = Array.from(new Set(
             mv.map((m: any) => m.player_name)
-              .filter((n: string) => n !== t.hostName)
+            .filter((n: string) => n !== t.hostName)
           )) as string[]
           if (!names.includes(name)) names.push(name)
+
+          // ✅ Добавляем всех игроков у которых есть lives в комнате
+          const livesPlayers = Object.keys(room?.lives || {})
+          livesPlayers.forEach(p => {
+            if (!names.includes(p)) names.push(p)
+          })
+
           setPlayers(names)
 
            // ✅ ФИКС 2: инициализация первого хода
