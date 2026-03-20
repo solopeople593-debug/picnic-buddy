@@ -27,10 +27,12 @@ export default function HomePage() {
   const handleStart = async () => {
     if (!name.trim()) return alert(lang === 'RU' ? "Введите имя!" : "Enter name!")
     const newCode = Math.random().toString(36).substring(2, 7).toUpperCase()
+
+    // Чистим старые данные чтобы не попасть в старое лобби
+    localStorage.removeItem('picnic_room_code')
     localStorage.setItem('picnic_player_name', name)
     localStorage.setItem('picnic_is_host', 'true')
 
-    // Чистим старые комнаты этого игрока
     const { error } = await supabase.from('rooms').insert([{ code: newCode, status: 'setup' }])
     if (error) return alert("DB Error: " + error.message)
 
@@ -48,10 +50,14 @@ export default function HomePage() {
     const cleanCode = joinCode.trim().toUpperCase()
     const { data } = await supabase.from('rooms').select('*').eq('code', cleanCode).single()
     if (!data) return alert(lang === 'RU' ? "Комната не найдена!" : "Room not found!")
+
+    // Чистим старые данные
+    localStorage.removeItem('picnic_room_code')
     localStorage.setItem('picnic_player_name', name)
     localStorage.setItem('picnic_is_host', 'false')
-    // Берём mode и sub_mode из базы!
-    router.push(`/game/${cleanCode}?mode=${data.sub_mode === 'hardcore' || data.sub_mode === 'assist' ? 'manual' : (data.sub_mode || 'manual')}&sub=${data.sub_mode || 'hardcore'}&lang=${lang}`)
+
+    const mode = data.sub_mode === 'hardcore' || data.sub_mode === 'assist' ? 'manual' : (data.sub_mode || 'ai_host')
+    router.push(`/game/${cleanCode}?mode=${mode}&sub=${data.sub_mode || 'hardcore'}&lang=${lang}`)
   }
 
   return (
