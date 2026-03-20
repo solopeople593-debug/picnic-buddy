@@ -33,6 +33,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const [eliminatedPlayers, setEliminatedPlayers] = useState<string[]>([])
   const [winner, setWinner] = useState<string>('')
   const [turnPlayer, setTurnPlayer] = useState<string>('')
+  const [copied, setCopied] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const isSolo = mode === 'solo'
@@ -58,6 +59,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       playerGuessed: "УГАДАЛ!", duplicate: "Это слово уже было!",
       notYourTurn: (n: string) => `Ход игрока ${n}...`,
       hostHint: "ПОДСКАЗКА ХОСТА",
+      copied: "СКОПИРОВАНО!",
     },
     EN: {
       title: "PICNIC BUDDY",
@@ -73,13 +75,14 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       playerGuessed: "GUESSED!", duplicate: "This word was already used!",
       notYourTurn: (n: string) => `${n}'s turn...`,
       hostHint: "HOST HINT",
+      copied: "COPIED!",
     },
     UA: {
-      title: "ПІКНІК БАДДІ",
+      title: "ПІКНІК БАДІ",
       placeholder: "Я БЕРУ З СОБОЮ...", surrender: "ЗДАТИСЯ",
-      spilled: "ТИ ПРОЛИВ ЛІМОНАД!", concept: "КОНЦЕПТ ПОХОДУ БУВ:",
+      spilled: "ТИ ПРОЛИВ ЛИМОНАД!", concept: "КОНЦЕПТ ПОХОДУ БУВ:",
       menu: "В ГОЛОВНЕ МЕНЮ", hostName: "ВЕДУЧИЙ ШІ", campers: "У ПОХОДІ:",
-      spilledMsg: (n: string) => `🥤 ${n} ПРОЛИВ ЛІМОНАД!`,
+      spilledMsg: (n: string) => `🥤 ${n} ПРОЛИВ ЛИМОНАД!`,
       eliminatedMsg: (n: string) => `💀 ${n} ВИБУВ!`,
       winnerMsg: (n: string) => `🏆 ${n} ВГАДАВ КОНЦЕПТ!`,
       whisperLabel: "🤫 ТІЛЬКИ ДЛЯ ТЕБЕ:",
@@ -88,6 +91,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       playerGuessed: "ВГАДАВ!", duplicate: "Це слово вже було!",
       notYourTurn: (n: string) => `Хід гравця ${n}...`,
       hostHint: "ПІДКАЗКА ХОСТА",
+      copied: "СКОПІЙОВАНО!",
     },
     LV: {
       title: "PIKNIKA BIEDRS",
@@ -103,6 +107,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       playerGuessed: "UZMINĒJA!", duplicate: "Šis vārds jau tika izmantots!",
       notYourTurn: (n: string) => `${n} gājiens...`,
       hostHint: "VADĪTĀJA PADOMS",
+      copied: "NOKOPĒTS!",
     },
   }[lang]
 
@@ -158,6 +163,12 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
     return () => { supabase.removeChannel(channel) }
   }, [code])
+
+  const copyCode = () => {
+    navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const nextTurn = async (currentPlayers: string[], currentTurn: string, hostName: string) => {
     if (isSolo) return
@@ -323,16 +334,11 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       {/* HEADER */}
       <div className="flex justify-between items-center z-10 relative">
         <button onClick={() => router.push('/')} className="text-xl opacity-20 hover:opacity-60 transition-opacity">←</button>
-
-        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center">
+        <div className="absolute left-1/2 -translate-x-1/2">
           <button onClick={() => router.push('/')} className="font-black text-sm text-[#1A5319] opacity-40 hover:opacity-100 transition-opacity uppercase tracking-widest">
             {t.title}
           </button>
-          <span className="text-[10px] font-black text-[#1A5319] opacity-20 tracking-widest">
-            {code && code !== 'undefined' ? code : ''}
-          </span>
         </div>
-
         <div className="flex gap-3 items-center">
           {!isManual && (
             <div className="flex gap-1">
@@ -345,8 +351,16 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
       {/* CAMPERS — только мультиплеер */}
       {!isSolo && (
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 border-b border-green-100 mt-2">
-          <span className="text-[9px] font-black opacity-30 uppercase pt-1">{t.campers}</span>
+        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 border-b border-green-100 mt-2 items-center">
+          {/* Код комнаты — кликабельный, копируется */}
+          <button
+            onClick={copyCode}
+            className="font-black text-lg text-[#1A5319] tracking-widest hover:opacity-60 active:scale-95 transition-all shrink-0"
+          >
+            {copied ? t.copied : code}
+          </button>
+          <span className="text-[9px] font-black opacity-20">·</span>
+          <span className="text-[9px] font-black opacity-30 uppercase pt-0.5 shrink-0">{t.campers}</span>
           {players.map((p, i) => {
             const pLives = playerLives[p] ?? 3
             const pEliminated = eliminatedPlayers.includes(p)

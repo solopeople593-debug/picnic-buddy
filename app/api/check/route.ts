@@ -15,7 +15,6 @@ export async function POST(req: Request) {
     const { data: room } = await supabase.from('rooms').select('secret_rule').eq('code', roomCode).single()
     const rule = room?.secret_rule || '???'
 
-    // Берём уже использованные слова чтобы не повторять подсказки
     const { data: moves } = await supabase
       .from('moves')
       .select('item')
@@ -24,31 +23,34 @@ export async function POST(req: Request) {
 
     const usedWords = moves?.map(m => m.item).join(', ') || ''
 
-    const prompt = `You are the host of the game "I'm going on a picnic". Language: ${lang}.
+    const prompt = `You are a STRICT host of the game "I'm going on a picnic". Language: ${lang}.
 Secret rule: "${rule}".
 Player input: "${item}".
-Already used words that fit the rule: ${usedWords || 'none yet'}.
+Already accepted words: ${usedWords || 'none'}.
 
-Step 1: Check if the player is trying to GUESS THE RULE ITSELF (not bring an item).
-- If yes and correct or very close: guessed=true
+IMPORTANT RULES FOR JUDGING:
+- Be VERY STRICT. Only accept items that CLEARLY and OBVIOUSLY fit the rule.
+- If the rule is about a physical property (like "items with a handle"), the item must LITERALLY have that property.
+- "КРЕКЕР" (cracker) does NOT have a handle. "ПЕЧЕНЬЕ" (cookie) does NOT have a handle. REJECT them.
+- "КРУЖКА" (mug) HAS a handle. "СУМКА" (bag) HAS a handle. ACCEPT them.
+- Do NOT be generous. When in doubt — REJECT.
+- Be consistent with previously accepted words.
+
+Step 1: Is the player trying to GUESS THE RULE ITSELF (not bring an item)?
+- If yes and VERY close or correct: guessed=true
 - If yes but wrong: guessed=false, allowed=false
 
-Step 2: Check if the item fits the secret rule. Be strict and consistent.
+Step 2: Does "${item}" LITERALLY and OBVIOUSLY fit the rule "${rule}"?
+Think carefully. Be strict.
 
-Step 3: ${needHint
-  ? `Give ONE concrete noun in language ${lang} that fits the secret rule. 
-     This is a WORD EXAMPLE hint, not an explanation. 
-     Must be different from already used words.
-     Example: if rule is "words with double letters" → hint could be "КОФЕ" or "ЛИМОН"
-     Just one word, no explanations.`
-  : 'hint = null'}
+${needHint ? `Step 3: Give ONE concrete noun in language ${lang} that fits the rule. Just the word, no explanation. Different from: ${usedWords || 'none'}.` : ''}
 
-Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "guessed": true or false, "hint": "one noun word or null"}`
+Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "guessed": true or false, "hint": "one noun or null"}`
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
+      temperature: 0.1,
     })
 
     const text = completion.choices[0].message.content || ""
