@@ -400,96 +400,123 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isGameOver || isVictory || isSpilled || isChecking || isEliminated || code === 'undefined') return
-    if (isAiHost && turnPlayer && turnPlayer !== playerName) return
-    if (!isMyTurn && !isSolo && !isAiGuesses && !isAiHost) return
+  if (!inputValue.trim() || isGameOver || isVictory || isSpilled || isChecking || isEliminated || code === 'undefined') return
+  if (isAiHost && turnPlayer && turnPlayer !== playerName) return
+  if (!isMyTurn && !isSolo && !isAiGuesses && !isAiHost) return
 
-    const text = inputValue.trim().toUpperCase()
-    const isDuplicate = moves.some(m => m.item === text && m.player_name !== t.hostName)
-    if (isDuplicate) { alert(t.duplicate); return }
+  const text = inputValue.trim().toUpperCase()
+  const isDuplicate = moves.some(m => m.item === text && m.player_name !== t.hostName)
+  if (isDuplicate) { alert(t.duplicate); return }
 
-    setInputValue('')
-    setIsChecking(true)
+  setInputValue('')
+  setIsChecking(true)
 
-    try {
-      const { data: move } = await supabase.from('moves').insert([{
-        room_code: code, player_name: playerName, item: text,
-        status: (isSolo || isAiHost) ? 'approved' : 'pending',
-        is_allowed: true
-      }]).select().single()
+  try {
+    const { data: move } = await supabase.from('moves').insert([{
+      room_code: code, player_name: playerName, item: text,
+      status: (isSolo || isAiHost) ? 'approved' : 'pending',
+      is_allowed: true
+    }]).select().single()
 
-      if (isSolo && move) {
-        const res = await fetch('/api/check', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item: text, roomCode: code, lang, needHint: true })
-        })
-        const result = await res.json()
-        if (result.guessed) {
-          await supabase.from('moves').update({ is_allowed: true }).eq('id', move.id)
-          await supabase.from('rooms').update({ status: 'victory', winner: playerName }).eq('code', code)
-          setIsVictory(true); setWinner(playerName)
-          return
-        }
-        await supabase.from('moves').update({ is_allowed: result.allowed }).eq('id', move.id)
-        if (result.hint) {
-          await supabase.from('moves').insert([{
-            room_code: code, player_name: t.hostName,
-            item: result.hint, status: 'approved', is_allowed: true
-          }])
-        }
-        if (!result.allowed) await handleLoseLive(playerName)
+    if (isSolo && move) {
+      const res = await fetch('/api/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: text, roomCode: code, lang, needHint: true })
+      })
+      const result = await res.json()
+      if (result.guessed) {
+        await supabase.from('moves').update({ is_allowed: true }).eq('id', move.id)
+        await supabase.from('rooms').update({ status: 'victory', winner: playerName }).eq('code', code)
+        setIsVictory(true); setWinner(playerName)
+        return
       }
-
-      if (isAiHost && move) {
-        const res = await fetch('/api/check', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item: text, roomCode: code, lang, needHint: true })
-        })
-        const result = await res.json()
-        if (result.guessed) {
-          await supabase.from('moves').update({ is_allowed: true }).eq('id', move.id)
-          await supabase.from('rooms').update({ status: 'victory', winner: playerName }).eq('code', code)
-          setIsVictory(true); setWinner(playerName)
-          return
-        }
-        await supabase.from('moves').update({ is_allowed: result.allowed }).eq('id', move.id)
-        if (result.hint) {
-          await supabase.from('moves').insert([{
-            room_code: code, player_name: t.hostName,
-            item: result.hint, status: 'approved', is_allowed: true
-          }])
-        }
-        if (!result.allowed) await handleLoseLive(playerName)
-        await nextAiHostTurn(players, playerName)
+      await supabase.from('moves').update({ is_allowed: result.allowed }).eq('id', move.id)
+      if (result.hint) {
+        await supabase.from('moves').insert([{
+          room_code: code, player_name: t.hostName,
+          item: result.hint, status: 'approved', is_allowed: true
+        }])
       }
-
-      if (isAssist && move) {
-        const res = await fetch('/api/check', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ item: text, roomCode: code, lang, needHint: false })
-        })
-        const result = await res.json()
-        if (result.guessed) {
-          await supabase.from('rooms').update({ status: 'victory', winner: playerName }).eq('code', code)
-          setIsVictory(true); setWinner(playerName)
-          return
-        }
-        await supabase.from('moves').update({ status: 'approved', is_allowed: result.allowed }).eq('id', move.id)
-        if (!result.allowed) await handleLoseLive(playerName)
-      }
-
-      if (!isSolo && !isAiGuesses && !isAiHost) {
-        const hostName = isHost ? playerName : players[0]
-        await nextTurn(players, turnPlayer, hostName)
-      }
-
-      const { data: freshMoves } = await supabase
-        .from('moves').select('*').eq('room_code', code)
-        .order('created_at', { ascending: true })
-      if (freshMoves) await checkWhisper(freshMoves)
-    } finally {
-      setIsChecking(false)
+      if (!result.allowed) await handleLoseLive(playerName)
     }
+
+    if (isAiHost && move) {
+      const res = await fetch('/api/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: text, roomCode: code, lang, needHint: false })
+      })
+      const result = await res.json()
+      if (result.guessed) {
+        await supabase.from('moves').update({ is_allowed: true }).eq('id', move.id)
+        await supabase.from('rooms').update({ status: 'victory', winner: playerName }).eq('code', code)
+        setIsVictory(true); setWinner(playerName)
+        return
+      }
+      await supabase.from('moves').update({ is_allowed: result.allowed }).eq('id', move.id)
+      if (!result.allowed) await handleLoseLive(playerName)
+
+      // Получаем актуальный список игроков из базы
+      const { data: freshMoves } = await supabase
+        .from('moves').select('player_name').eq('room_code', code)
+        .order('created_at', { ascending: true })
+
+      const allPlayers = Array.from(new Set(
+        freshMoves?.map((m: any) => m.player_name).filter((n: string) => n !== t.hostName) || []
+      )) as string[]
+
+      const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
+
+      if (activePlayers.length > 0) {
+        const currentIdx = activePlayers.indexOf(playerName)
+        const nextIdx = (currentIdx + 1) % activePlayers.length
+        const nextPlayer = activePlayers[nextIdx]
+
+        // Если следующий — первый по кругу (круг завершён) — ИИ даёт подсказку
+        if (nextIdx === 0 || nextPlayer === activePlayers[0] && currentIdx === activePlayers.length - 1) {
+          const checkRes = await fetch('/api/check', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item: text, roomCode: code, lang, needHint: true })
+          })
+          const checkResult = await checkRes.json()
+          if (checkResult.hint) {
+            await supabase.from('moves').insert([{
+              room_code: code, player_name: t.hostName,
+              item: checkResult.hint, status: 'approved', is_allowed: true
+            }])
+          }
+        }
+
+        await supabase.from('rooms').update({ turn_player: nextPlayer }).eq('code', code)
+      }
+    }
+
+    if (isAssist && move) {
+      const res = await fetch('/api/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: text, roomCode: code, lang, needHint: false })
+      })
+      const result = await res.json()
+      if (result.guessed) {
+        await supabase.from('rooms').update({ status: 'victory', winner: playerName }).eq('code', code)
+        setIsVictory(true); setWinner(playerName)
+        return
+      }
+      await supabase.from('moves').update({ status: 'approved', is_allowed: result.allowed }).eq('id', move.id)
+      if (!result.allowed) await handleLoseLive(playerName)
+    }
+
+    if (!isSolo && !isAiGuesses && !isAiHost) {
+      const hostName = isHost ? playerName : players[0]
+      await nextTurn(players, turnPlayer, hostName)
+    }
+
+    const { data: freshMovesForWhisper } = await supabase
+      .from('moves').select('*').eq('room_code', code)
+      .order('created_at', { ascending: true })
+    if (freshMovesForWhisper) await checkWhisper(freshMovesForWhisper)
+  } finally {
+    setIsChecking(false)
+  }
   }
 
   const declareWinner = async (winnerName: string) => {
