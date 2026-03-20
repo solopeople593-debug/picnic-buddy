@@ -1,120 +1,63 @@
-"use client";
+'use client'
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "./lib/supabase"; 
-import Link from "next/link";
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function Home() {
-  const router = useRouter();
-  const [selectedMode, setSelectedMode] = useState("ai");
-  const [inputCode, setInputCode] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const router = useRouter()
 
-  // Функция генерации случайного кода
-  const generateRandomCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 5; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+  const handleCreateGame = () => {
+    if (!name.trim()) return alert("Please enter your name first!")
+    const newCode = Math.random().toString(36).substring(2, 7).toUpperCase()
+    
+    localStorage.setItem('picnic_player_name', name.trim())
+    localStorage.setItem('picnic_is_host', 'true')
+    
+    // Переход в папку game/[code]
+    router.push(`/game/${newCode}`)
+  }
+
+  const handleJoinGame = () => {
+    if (!name.trim()) return alert("Please enter your name!")
+    if (code.trim()) {
+      localStorage.setItem('picnic_player_name', name.trim())
+      localStorage.setItem('picnic_is_host', 'false')
+      router.push(`/game/${code.trim().toUpperCase()}`)
     }
-    return result;
-  };
-
-  // ФУНКЦИЯ СОЗДАНИЯ ИГРЫ В БАЗЕ ДАННЫХ
-  const handleCreateGame = async () => {
-    setIsLoading(true);
-    const newCode = generateRandomCode();
-
-    try {
-      const { error } = await supabase
-        .from('games')
-        .insert([
-          { 
-            code: newCode, 
-            mode: selectedMode, 
-            status: 'waiting' 
-          }
-        ]);
-
-      if (error) throw error;
-
-      // Если всё успешно, переходим в лобби
-      router.push(`/lobby?code=${newCode}&mode=${selectedMode}`);
-    } catch (error: any) {
-      alert("Error creating game: " + error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-background">
-      
-      {/* Декор */}
-      <div className="absolute top-10 right-10 text-6xl opacity-20 select-none text-text-main">☀️</div>
-      <div className="absolute bottom-10 left-10 text-6xl opacity-20 select-none text-text-main">🌲</div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6 font-sans text-black">
+      <div className="w-full max-w-sm space-y-6">
+        <h1 className="text-4xl font-black text-center mb-10">🧺 PICNIC BUDDY</h1>
+        
+        <input 
+          placeholder="YOUR NAME"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full px-6 py-4 bg-gray-100 rounded-2xl outline-none focus:ring-2 ring-black text-center font-bold"
+        />
 
-      <div className="z-10 w-full max-w-md flex flex-col items-center">
-        <div className="text-5xl mb-4 drop-shadow-sm text-center">🧺</div>
+        <div className="h-[1px] bg-gray-100 w-full my-4"></div>
 
-        <h1 className="text-4xl md:text-5xl font-black mb-2 text-center leading-tight text-text-main">
-          I&apos;m Going on a <br/>
-          <span className="text-accent">Picnic</span>
-        </h1>
-
-        <div className="flex flex-col gap-3 w-full mb-8 mt-8">
-          {/* Кнопки выбора режима */}
-          {["ai", "manual", "auto"].map((m) => (
-            <button 
-              key={m}
-              onClick={() => setSelectedMode(m)}
-              className={`flex items-center justify-between p-4 rounded-2xl shadow-sm border-2 transition-all text-left ${
-                selectedMode === m ? "bg-accent text-white border-accent" : "bg-white text-text-main border-transparent"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{m === "ai" ? "🤖" : m === "manual" ? "👤" : "✨"}</span>
-                <div>
-                  <div className="font-bold tracking-tight uppercase text-xs opacity-60">Mode</div>
-                  <div className="font-bold">{m === "ai" ? "AI Host" : m === "manual" ? "Player Host (Manual)" : "Player Host (Auto)"}</div>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* КНОПКА СОЗДАНИЯ */}
-        <button 
-          onClick={handleCreateGame}
-          disabled={isLoading}
-          className="w-full bg-accent text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-accent/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
-        >
-          {isLoading ? "Creating Room..." : "+ Create New Game"}
+        <button onClick={handleCreateGame} className="w-full bg-green-500 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-all">
+          CREATE NEW GAME
         </button>
 
-        {/* ПРИСОЕДИНЕНИЕ */}
-        <div className="mt-6 flex flex-col items-center w-full">
-          <p className="text-xs text-gray-400 uppercase font-bold tracking-widest mb-3">or join a game</p>
-          <div className="flex gap-2 w-full">
-            <input
-              value={inputCode}
-              onChange={(e) => setInputCode(e.target.value.toUpperCase())}
-              placeholder="ENTER CODE"
-              className="flex-1 bg-white border-2 border-gray-100 rounded-2xl p-4 text-center font-mono font-bold focus:border-accent outline-none transition shadow-sm text-text-main"
-            />
-            <button 
-              onClick={() => router.push(`/lobby?code=${inputCode}&mode=join`)}
-              disabled={inputCode.length < 4}
-              className={`px-5 rounded-2xl transition ${
-                inputCode.length >= 4 ? "bg-accent text-white" : "bg-gray-200 text-gray-500"
-              }`}
-            >
-              →
-            </button>
-          </div>
+        <div className="flex items-center gap-2">
+          <input 
+            placeholder="CODE"
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            className="flex-1 px-4 py-4 bg-gray-100 rounded-2xl outline-none font-mono text-center"
+          />
+          <button onClick={handleJoinGame} className="bg-black text-white px-8 py-4 rounded-2xl font-bold active:scale-95 transition-all">
+            JOIN
+          </button>
         </div>
       </div>
-    </main>
-  );
+    </div>
+  )
 }
