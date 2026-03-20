@@ -1,0 +1,7 @@
+{
+  "cleanUrls": true,
+  "framework": "nextjs",
+  "rewrites": [
+    { "source": "/game/:code", "destination": "/game/:code" }
+  ]
+}
