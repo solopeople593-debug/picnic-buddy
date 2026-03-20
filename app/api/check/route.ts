@@ -12,27 +12,38 @@ export async function POST(req: Request) {
   try {
     const { item, roomCode, lang, needHint } = await req.json()
 
-    const { data: room } = await supabase
-      .from('rooms')
-      .select('secret_rule')
-      .eq('code', roomCode)
-      .single()
-
+    const { data: room } = await supabase.from('rooms').select('secret_rule').eq('code', roomCode).single()
     const rule = room?.secret_rule || '???'
+
+    // Берём уже использованные слова чтобы не повторять подсказки
+    const { data: moves } = await supabase
+      .from('moves')
+      .select('item')
+      .eq('room_code', roomCode)
+      .eq('is_allowed', true)
+
+    const usedWords = moves?.map(m => m.item).join(', ') || ''
 
     const prompt = `You are the host of the game "I'm going on a picnic". Language: ${lang}.
 Secret rule: "${rule}".
 Player input: "${item}".
+Already used words that fit the rule: ${usedWords || 'none yet'}.
 
-First check: is the player trying to GUESS THE RULE ITSELF (not bring an item, but guess the concept)?
-- If yes and they are correct or very close: set guessed=true
-- If yes but wrong: set guessed=false, allowed=false
+Step 1: Check if the player is trying to GUESS THE RULE ITSELF (not bring an item).
+- If yes and correct or very close: guessed=true
+- If yes but wrong: guessed=false, allowed=false
 
-Then check: does the item fit the secret rule?
+Step 2: Check if the item fits the secret rule. Be strict and consistent.
 
-${needHint ? `Also write a very short witty hint in language ${lang} (max 6 words, do NOT reveal the rule directly).` : ''}
+Step 3: ${needHint
+  ? `Give ONE concrete noun in language ${lang} that fits the secret rule. 
+     This is a WORD EXAMPLE hint, not an explanation. 
+     Must be different from already used words.
+     Example: if rule is "words with double letters" → hint could be "КОФЕ" or "ЛИМОН"
+     Just one word, no explanations.`
+  : 'hint = null'}
 
-Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "guessed": true or false, "hint": "short hint or null"}`
+Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "guessed": true or false, "hint": "one noun word or null"}`
 
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
@@ -44,11 +55,7 @@ Answer ONLY in valid JSON, no markdown: {"allowed": true or false, "guessed": tr
     const clean = text.replace(/```json|```/g, "").trim()
     const parsed = JSON.parse(clean)
 
-    return NextResponse.json({
-      allowed: !!parsed.allowed,
-      guessed: !!parsed.guessed,
-      hint: parsed.hint || null
-    })
+    return NextResponse.json({ allowed: !!parsed.allowed, guessed: !!parsed.guessed, hint: parsed.hint || null })
   } catch (error: any) {
     console.error("Check API Error:", error?.message)
     return NextResponse.json({ allowed: false, guessed: false, hint: null }, { status: 500 })
