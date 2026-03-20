@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+const nextConfig: any = {
   typescript: {
-    // Это заставит Vercel игнорировать ошибки типов при сборке
+    // Игнорируем ошибки типов при сборке на Vercel
     ignoreBuildErrors: true,
   },
   eslint: {
-    // На всякий случай отключаем и линтер, чтобы не придирался к кавычкам
+    // Игнорируем ошибки линтера
     ignoreDuringBuilds: true,
   },
 };
