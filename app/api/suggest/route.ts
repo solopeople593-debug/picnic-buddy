@@ -9,41 +9,42 @@ export async function POST(req: Request) {
 
     const prompts: any = {
       RU: secret
-        ? `Придумай секретное правило для игры "Я беру с собой в поход".
-ВАЖНО: правило должно быть конкретным, визуальным, однозначным.
-ХОРОШИЕ примеры: "Предметы красного цвета", "Слова на букву М", "Животные", "Еда", "Слова из 5 букв", "Предметы из дерева", "Вещи в полоску", "Круглые предметы".
-ПЛОХИЕ примеры — НЕ ИСПОЛЬЗУЙ: "Слова на одном выдохе", "Вещи которые делают счастливым", "Абстрактные понятия", "Слова звучащие мягко", "Вещи связанные с природой" (слишком широко).
-Правило должно быть таким, чтобы игрок мог его угадать за 10-15 попыток.
-Ответь ТОЛЬКО в JSON без markdown: {"suggestion": "твоё правило"}`
-        : `Придумай одно конкретное правило для игры "Я беру с собой в поход". До 5 слов. Ответь ТОЛЬКО в JSON: {"suggestion": "правило"}`,
+        ? `Ты ведущий игры "Я беру с собой в поход". Придумай секретное правило для этой игры.
+КОНТЕКСТ: игроки называют предметы которые берут на пикник или в поход. Правило должно быть о ПРЕДМЕТАХ или СЛОВАХ, а не о действиях или абстракциях.
+ХОРОШИЕ примеры: "Предметы красного цвета", "Слова на букву К", "Вещи из металла", "Еда", "Животные", "Предметы с ручкой", "Круглые предметы", "Слова из 5 букв".
+ПЛОХИЕ примеры — НЕ ИСПОЛЬЗУЙ: "Вставай рано", "Будь счастлив", "Думай позитивно", "Абстрактные понятия", любые действия или советы.
+Правило должно быть конкретным, угадываемым за 10-15 попыток, связанным с предметами или буквами.
+Ответь ТОЛЬКО в JSON без markdown: {"suggestion": "правило"}`
+        : `Придумай короткое конкретное правило для игры про пикник. О предметах или буквах. До 5 слов. ТОЛЬКО JSON: {"suggestion": "правило"}`,
       EN: secret
-        ? `Create a secret rule for the game "I'm going on a picnic".
-IMPORTANT: rule must be concrete, visual, unambiguous.
-GOOD examples: "Red colored items", "Words starting with M", "Animals", "Food items", "Words with 5 letters", "Wooden objects", "Striped things", "Round objects".
-BAD examples — DO NOT USE: "Words said in one breath", "Things that make you happy", "Abstract concepts", "Softly sounding words", "Nature related things" (too broad).
-Rule must be guessable in 10-15 attempts.
-Answer ONLY in JSON no markdown: {"suggestion": "your rule"}`
-        : `Create one concrete rule for the game "I'm going on a picnic". Max 5 words. Answer ONLY in JSON: {"suggestion": "rule"}`,
+        ? `You are the host of "I'm going on a picnic" game. Create a secret rule.
+CONTEXT: players name items they would bring to a picnic. Rule must be about ITEMS or WORDS, not actions or abstract concepts.
+GOOD examples: "Red colored items", "Words starting with K", "Metal objects", "Food items", "Animals", "Items with a handle", "Round objects", "5-letter words".
+BAD examples — DO NOT USE: "Wake up early", "Be happy", "Think positive", "Abstract concepts", any actions or life advice.
+Rule must be concrete, guessable in 10-15 tries, related to physical items or word properties.
+Answer ONLY in JSON no markdown: {"suggestion": "rule"}`
+        : `Create a short concrete rule for a picnic game. About items or letters. Max 5 words. ONLY JSON: {"suggestion": "rule"}`,
       UA: secret
-        ? `Придумай секретне правило для гри "Я беру з собою в похід".
-ВАЖЛИВО: правило має бути конкретним, візуальним, однозначним.
-ХОРОШІ приклади: "Предмети червоного кольору", "Слова на букву М", "Тварини", "Їжа", "Слова з 5 букв".
-ПОГАНІ приклади — НЕ ВИКОРИСТОВУЙ: "Слова на одному видиху", "Абстрактні поняття".
-Відповідай ТІЛЬКИ в JSON без markdown: {"suggestion": "твоє правило"}`
-        : `Придумай одне конкретне правило. До 5 слів. Відповідай ТІЛЬКИ в JSON: {"suggestion": "правило"}`,
+        ? `Ти ведучий гри "Я беру з собою в похід". Придумай секретне правило.
+КОНТЕКСТ: гравці називають предмети які беруть на пікнік. Правило має бути про ПРЕДМЕТИ або СЛОВА, не про дії чи абстракції.
+ХОРОШІ приклади: "Предмети червоного кольору", "Слова на букву К", "Речі з металу", "Їжа", "Тварини", "Предмети з ручкою", "Круглі предмети".
+ПОГАНІ приклади — НЕ ВИКОРИСТОВУЙ: "Вставай рано", "Будь щасливий", абстрактні поняття, поради.
+Відповідай ТІЛЬКИ в JSON без markdown: {"suggestion": "правило"}`
+        : `Придумай коротке конкретне правило для гри про пікнік. Про предмети або букви. До 5 слів. ТІЛЬКИ JSON: {"suggestion": "правило"}`,
       LV: secret
-        ? `Izdomā slepenu noteikumu spēlei "Es ņemu līdzi".
-SVARĪGI: noteikumam jābūt konkrētam, vizuālam, nepārprotamam.
-LABI piemēri: "Sarkanas krāsas priekšmeti", "Vārdi ar burtu M", "Dzīvnieki", "Pārtika", "Vārdi ar 5 burtiem".
-Atbildi TIKAI JSON bez markdown: {"suggestion": "tavs noteikums"}`
-        : `Izdomā vienu konkrētu noteikumu. Īsi. Atbildi TIKAI JSON: {"suggestion": "noteikums"}`
+        ? `Tu esi spēles "Es ņemu līdzi" vadītājs. Izdomā slepenu noteikumu.
+KONTEKSTS: spēlētāji nosauc priekšmetus ko ņemtu piknikā. Noteikumam jābūt par PRIEKŠMETIEM vai VĀRDIEM, ne par darbībām vai abstrakcijām.
+LABI piemēri: "Sarkanas krāsas priekšmeti", "Vārdi ar burtu K", "Metāla priekšmeti", "Pārtika", "Dzīvnieki", "Apaļi priekšmeti".
+SLIKTI piemēri — NEIZMANTO: "Celies agri", "Esi laimīgs", abstrakti jēdzieni, padomi.
+Atbildi TIKAI JSON bez markdown: {"suggestion": "noteikums"}`
+        : `Izdomā īsu konkrētu noteikumu piknika spēlei. Par priekšmetiem vai burtiem. Max 5 vārdi. TIKAI JSON: {"suggestion": "noteikums"}`
     }
 
     const prompt = prompts[lang] || prompts['RU']
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
+      temperature: 0.8,
     })
 
     const text = completion.choices[0].message.content || ""
@@ -52,7 +53,12 @@ Atbildi TIKAI JSON bez markdown: {"suggestion": "tavs noteikums"}`
     return NextResponse.json({ suggestion: parsed.suggestion })
   } catch (error: any) {
     console.error("Suggest API Error:", error?.message)
-    const fallbacks: any = { RU: "Предметы красного цвета", EN: "Red colored items", UA: "Предмети червоного кольору", LV: "Sarkanas krāsas priekšmeti" }
+    const fallbacks: any = {
+      RU: "Предметы красного цвета",
+      EN: "Red colored items",
+      UA: "Предмети червоного кольору",
+      LV: "Sarkanas krāsas priekšmeti"
+    }
     return NextResponse.json({ suggestion: fallbacks['RU'] })
   }
 }
