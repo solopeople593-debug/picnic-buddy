@@ -2,21 +2,24 @@ import { NextResponse } from "next/server"
 import Groq from "groq-sdk"
 import { createClient } from "@supabase/supabase-js"
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
+
+function getGroq(): Groq {
+  const keysString = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || ""
+  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0)
+  const key = keys[Math.floor(Math.random() * keys.length)]
+  return new Groq({ apiKey: key })
+}
 
 export async function POST(req: Request) {
   try {
     const { roomCode, lang } = await req.json()
 
     const { data: room } = await supabase
-      .from('rooms')
-      .select('secret_rule')
-      .eq('code', roomCode)
-      .single()
+      .from('rooms').select('secret_rule').eq('code', roomCode).single()
 
     const { data: moves } = await supabase
       .from('moves')
@@ -38,6 +41,7 @@ Give the host a SHORT whisper in language ${lang} (max 10 words):
 - Never reveal the rule directly
 Answer ONLY in JSON no markdown: {"whisper": "short message", "danger": true or false}`
 
+    const groq = getGroq()
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
