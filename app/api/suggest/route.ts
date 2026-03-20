@@ -5,46 +5,71 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 export async function POST(req: Request) {
   try {
-    const { lang, secret } = await req.json()
+    const { lang, secret, difficulty = 'easy' } = await req.json()
+
+    const difficultyPrompts: any = {
+      easy: {
+        RU: 'ЛЁГКИЙ уровень: одно простое слово-категория. Примеры: "Еда", "Животные", "Красные предметы", "Слова на букву А", "Металлические предметы".',
+        EN: 'EASY level: one simple word-category. Examples: "Food", "Animals", "Red items", "Words starting with A", "Metal objects".',
+        UA: 'ЛЕГКИЙ рівень: одне просте слово-категорія. Приклади: "Їжа", "Тварини", "Червоні предмети", "Слова на букву А".',
+        LV: 'VIEGLS līmenis: viens vienkāršs vārds-kategorija. Piemēri: "Pārtika", "Dzīvnieki", "Sarkani priekšmeti".',
+      },
+      medium: {
+        RU: 'СРЕДНИЙ уровень: словосочетание 2-3 слова. Примеры: "Предметы с ручкой", "Слова из 5 букв", "Вещи синего цвета", "Предметы мягкие на ощупь", "Вещи которые светятся".',
+        EN: 'MEDIUM level: 2-3 word phrase. Examples: "Items with a handle", "5-letter words", "Blue colored things", "Soft textured items", "Things that glow".',
+        UA: 'СЕРЕДНІЙ рівень: словосполучення 2-3 слова. Приклади: "Предмети з ручкою", "Слова з 5 букв", "Речі синього кольору".',
+        LV: 'VIDĒJS līmenis: 2-3 vārdu frāze. Piemēri: "Priekšmeti ar rokturi", "5 burtu vārdi", "Zilas krāsas lietas".',
+      },
+      hard: {
+        RU: 'СЛОЖНЫЙ уровень: хитрое нестандартное правило. Примеры: "Слова где первая и последняя буква одинаковые", "Предметы которые есть в каждом доме но их не замечают", "Слова содержащие название животного", "Вещи которые бывают и большими и маленькими".',
+        EN: 'HARD level: tricky unusual rule. Examples: "Words where first and last letter are the same", "Items found in every home but rarely noticed", "Words containing an animal name", "Things that can be both big and small".',
+        UA: 'СКЛАДНИЙ рівень: хитре нестандартне правило. Приклади: "Слова де перша і остання буква однакові", "Предмети які є в кожному домі але їх не помічають", "Слова що містять назву тварини".',
+        LV: 'GRŪTS līmenis: viltīgs neparasts noteikums. Piemēri: "Vārdi kur pirmais un pēdējais burts ir vienādi", "Priekšmeti katrās mājās bet reti pamanīti".',
+      }
+    }
+
+    const diffDesc = difficultyPrompts[difficulty]?.[lang] || difficultyPrompts['easy']['RU']
 
     const prompts: any = {
       RU: secret
-        ? `Ты ведущий игры "Я беру с собой в поход". Придумай секретное правило для этой игры.
-КОНТЕКСТ: игроки называют предметы которые берут на пикник или в поход. Правило должно быть о ПРЕДМЕТАХ или СЛОВАХ, а не о действиях или абстракциях.
-ХОРОШИЕ примеры: "Предметы красного цвета", "Слова на букву К", "Вещи из металла", "Еда", "Животные", "Предметы с ручкой", "Круглые предметы", "Слова из 5 букв".
-ПЛОХИЕ примеры — НЕ ИСПОЛЬЗУЙ: "Вставай рано", "Будь счастлив", "Думай позитивно", "Абстрактные понятия", любые действия или советы.
-Правило должно быть конкретным, угадываемым за 10-15 попыток, связанным с предметами или буквами.
+        ? `Ты ведущий игры "Я беру с собой в поход". Придумай секретное правило для игры.
+СЛОЖНОСТЬ: ${diffDesc}
+КОНТЕКСТ: игроки называют предметы которые берут на пикник или в поход.
+Правило должно быть о ПРЕДМЕТАХ или СЛОВАХ — не о действиях, не о советах, не об абстракциях.
+НЕ ИСПОЛЬЗУЙ: мотивацию, советы, действия типа "вставай рано", абстрактные понятия.
+Придумай что-то новое, не повторяй банальные примеры.
 Ответь ТОЛЬКО в JSON без markdown: {"suggestion": "правило"}`
-        : `Придумай короткое конкретное правило для игры про пикник. О предметах или буквах. До 5 слов. ТОЛЬКО JSON: {"suggestion": "правило"}`,
+        : `Придумай одно конкретное правило для игры про пикник. ${diffDesc} Ответь ТОЛЬКО в JSON: {"suggestion": "правило"}`,
       EN: secret
-        ? `You are the host of "I'm going on a picnic" game. Create a secret rule.
-CONTEXT: players name items they would bring to a picnic. Rule must be about ITEMS or WORDS, not actions or abstract concepts.
-GOOD examples: "Red colored items", "Words starting with K", "Metal objects", "Food items", "Animals", "Items with a handle", "Round objects", "5-letter words".
-BAD examples — DO NOT USE: "Wake up early", "Be happy", "Think positive", "Abstract concepts", any actions or life advice.
-Rule must be concrete, guessable in 10-15 tries, related to physical items or word properties.
-Answer ONLY in JSON no markdown: {"suggestion": "rule"}`
-        : `Create a short concrete rule for a picnic game. About items or letters. Max 5 words. ONLY JSON: {"suggestion": "rule"}`,
+        ? `You are the host of "I'm going on a picnic". Create a secret rule.
+DIFFICULTY: ${diffDesc}
+CONTEXT: players name items they bring to a picnic.
+Rule must be about ITEMS or WORDS — not actions, not advice, not abstractions.
+DO NOT USE: motivation, life advice, actions like "wake up early", abstract concepts.
+Be creative and original.
+Answer ONLY in JSON: {"suggestion": "rule"}`
+        : `Create one concrete rule for a picnic game. ${diffDesc} Answer ONLY in JSON: {"suggestion": "rule"}`,
       UA: secret
         ? `Ти ведучий гри "Я беру з собою в похід". Придумай секретне правило.
-КОНТЕКСТ: гравці називають предмети які беруть на пікнік. Правило має бути про ПРЕДМЕТИ або СЛОВА, не про дії чи абстракції.
-ХОРОШІ приклади: "Предмети червоного кольору", "Слова на букву К", "Речі з металу", "Їжа", "Тварини", "Предмети з ручкою", "Круглі предмети".
-ПОГАНІ приклади — НЕ ВИКОРИСТОВУЙ: "Вставай рано", "Будь щасливий", абстрактні поняття, поради.
-Відповідай ТІЛЬКИ в JSON без markdown: {"suggestion": "правило"}`
-        : `Придумай коротке конкретне правило для гри про пікнік. Про предмети або букви. До 5 слів. ТІЛЬКИ JSON: {"suggestion": "правило"}`,
+СКЛАДНІСТЬ: ${diffDesc}
+КОНТЕКСТ: гравці називають предмети для пікніка.
+Правило має бути про ПРЕДМЕТИ або СЛОВА — не про дії, не про поради.
+НЕ ВИКОРИСТОВУЙ: мотивацію, поради, дії, абстрактні поняття.
+Відповідай ТІЛЬКИ в JSON: {"suggestion": "правило"}`
+        : `Придумай одне конкретне правило для гри про пікнік. ${diffDesc} ТІЛЬКИ JSON: {"suggestion": "правило"}`,
       LV: secret
         ? `Tu esi spēles "Es ņemu līdzi" vadītājs. Izdomā slepenu noteikumu.
-KONTEKSTS: spēlētāji nosauc priekšmetus ko ņemtu piknikā. Noteikumam jābūt par PRIEKŠMETIEM vai VĀRDIEM, ne par darbībām vai abstrakcijām.
-LABI piemēri: "Sarkanas krāsas priekšmeti", "Vārdi ar burtu K", "Metāla priekšmeti", "Pārtika", "Dzīvnieki", "Apaļi priekšmeti".
-SLIKTI piemēri — NEIZMANTO: "Celies agri", "Esi laimīgs", abstrakti jēdzieni, padomi.
-Atbildi TIKAI JSON bez markdown: {"suggestion": "noteikums"}`
-        : `Izdomā īsu konkrētu noteikumu piknika spēlei. Par priekšmetiem vai burtiem. Max 5 vārdi. TIKAI JSON: {"suggestion": "noteikums"}`
+GRŪTĪBA: ${diffDesc}
+Noteikumam jābūt par PRIEKŠMETIEM vai VĀRDIEM — ne par darbībām vai abstrakcijām.
+Atbildi TIKAI JSON: {"suggestion": "noteikums"}`
+        : `Izdomā vienu konkrētu noteikumu piknika spēlei. ${diffDesc} TIKAI JSON: {"suggestion": "noteikums"}`
     }
 
     const prompt = prompts[lang] || prompts['RU']
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.8,
+      temperature: difficulty === 'hard' ? 0.9 : 0.7,
     })
 
     const text = completion.choices[0].message.content || ""
@@ -53,12 +78,6 @@ Atbildi TIKAI JSON bez markdown: {"suggestion": "noteikums"}`
     return NextResponse.json({ suggestion: parsed.suggestion })
   } catch (error: any) {
     console.error("Suggest API Error:", error?.message)
-    const fallbacks: any = {
-      RU: "Предметы красного цвета",
-      EN: "Red colored items",
-      UA: "Предмети червоного кольору",
-      LV: "Sarkanas krāsas priekšmeti"
-    }
-    return NextResponse.json({ suggestion: fallbacks['RU'] })
+    return NextResponse.json({ suggestion: "Предметы красного цвета" })
   }
 }

@@ -15,6 +15,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const lang = (['RU', 'EN', 'UA', 'LV'].includes(langParam) ? langParam : 'RU') as SupportedLangs
   const mode = searchParams.get('mode') || 'solo'
   const subMode = searchParams.get('sub') || 'hardcore'
+  const noLives = searchParams.get('nolives') === 'true'
 
   const [moves, setMoves] = useState<any[]>([])
   const [players, setPlayers] = useState<string[]>([])
@@ -34,15 +35,20 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const [winner, setWinner] = useState<string>('')
   const [turnPlayer, setTurnPlayer] = useState<string>('')
   const [copied, setCopied] = useState(false)
+  const [showRuleReminder, setShowRuleReminder] = useState(false)
+  const [aiQuestion, setAiQuestion] = useState<string>('')
+  const [aiQuestionType, setAiQuestionType] = useState<'question' | 'guess'>('question')
+  const [isAiThinking, setIsAiThinking] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const isSolo = mode === 'solo'
+  const isAiGuesses = mode === 'ai_guesses'
   const isAssist = mode === 'manual' && subMode === 'assist'
   const isManual = mode === 'manual'
   const myLives = playerLives[playerName] ?? 3
   const isSpilled = spilledPlayers[playerName] ?? false
   const isEliminated = eliminatedPlayers.includes(playerName)
-  const isMyTurn = isSolo || turnPlayer === playerName || turnPlayer === ''
+  const isMyTurn = isSolo || isAiGuesses || turnPlayer === playerName || turnPlayer === ''
 
   const t: any = {
     RU: {
@@ -60,6 +66,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `Ход игрока ${n}...`,
       hostHint: "ПОДСКАЗКА ХОСТА",
       copied: "СКОПИРОВАНО!",
+      ruleReminder: "ТВОЁ ПРАВИЛО:",
+      aiGuessVictory: "ИИ УГАДАЛ!",
+      aiGuessDefeat: "ИИ НЕ УГАДАЛ!",
+      startAiGame: "НАЧАТЬ — ИИ ЗАДАЁТ ВОПРОСЫ",
+      aiThinking: "ИИ ДУМАЕТ...",
+      yesAnswer: "ДА",
+      noAnswer: "НЕТ",
+      aiGuessLabel: "🎯 ИИ ДУМАЕТ ЧТО ЭТО:",
+      aiQuestionLabel: "❓ ВОПРОС ОТ ИИ:",
     },
     EN: {
       title: "PICNIC BUDDY",
@@ -76,13 +91,22 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `${n}'s turn...`,
       hostHint: "HOST HINT",
       copied: "COPIED!",
+      ruleReminder: "YOUR RULE:",
+      aiGuessVictory: "AI GUESSED IT!",
+      aiGuessDefeat: "AI COULDN'T GUESS!",
+      startAiGame: "START — AI ASKS QUESTIONS",
+      aiThinking: "AI IS THINKING...",
+      yesAnswer: "YES",
+      noAnswer: "NO",
+      aiGuessLabel: "🎯 AI THINKS IT'S:",
+      aiQuestionLabel: "❓ AI QUESTION:",
     },
     UA: {
-      title: "ПІКНІК БАДІ",
+      title: "ПІКНІК БАДДІ",
       placeholder: "Я БЕРУ З СОБОЮ...", surrender: "ЗДАТИСЯ",
-      spilled: "ТИ ПРОЛИВ ЛИМОНАД!", concept: "КОНЦЕПТ ПОХОДУ БУВ:",
+      spilled: "ТИ ПРОЛИВ ЛІМОНАД!", concept: "КОНЦЕПТ ПОХОДУ БУВ:",
       menu: "В ГОЛОВНЕ МЕНЮ", hostName: "ВЕДУЧИЙ ШІ", campers: "У ПОХОДІ:",
-      spilledMsg: (n: string) => `🥤 ${n} ПРОЛИВ ЛИМОНАД!`,
+      spilledMsg: (n: string) => `🥤 ${n} ПРОЛИВ ЛІМОНАД!`,
       eliminatedMsg: (n: string) => `💀 ${n} ВИБУВ!`,
       winnerMsg: (n: string) => `🏆 ${n} ВГАДАВ КОНЦЕПТ!`,
       whisperLabel: "🤫 ТІЛЬКИ ДЛЯ ТЕБЕ:",
@@ -92,6 +116,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `Хід гравця ${n}...`,
       hostHint: "ПІДКАЗКА ХОСТА",
       copied: "СКОПІЙОВАНО!",
+      ruleReminder: "ТВОЄ ПРАВИЛО:",
+      aiGuessVictory: "ШІ ВГАДАВ!",
+      aiGuessDefeat: "ШІ НЕ ВГАДАВ!",
+      startAiGame: "СТАРТ — ШІ СТАВИТЬ ПИТАННЯ",
+      aiThinking: "ШІ ДУМАЄ...",
+      yesAnswer: "ТАК",
+      noAnswer: "НІ",
+      aiGuessLabel: "🎯 ШІ ДУМАЄ ЩО ЦЕ:",
+      aiQuestionLabel: "❓ ПИТАННЯ ВІД ШІ:",
     },
     LV: {
       title: "PIKNIKA BIEDRS",
@@ -108,6 +141,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `${n} gājiens...`,
       hostHint: "VADĪTĀJA PADOMS",
       copied: "NOKOPĒTS!",
+      ruleReminder: "TAVS NOTEIKUMS:",
+      aiGuessVictory: "AI UZMINĒJA!",
+      aiGuessDefeat: "AI NEUZMINĒJA!",
+      startAiGame: "SĀKT — AI UZDOD JAUTĀJUMUS",
+      aiThinking: "AI DOMĀ...",
+      yesAnswer: "JĀ",
+      noAnswer: "NĒ",
+      aiGuessLabel: "🎯 AI DOMĀ KA TAS IR:",
+      aiQuestionLabel: "❓ AI JAUTĀJUMS:",
     },
   }[lang]
 
@@ -130,7 +172,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         if (room.status === 'victory') { setIsVictory(true); setWinner(room.winner || '') }
         setTurnPlayer(room.turn_player || '')
         const livesData: Record<string, number> = room.lives || {}
-        if (!(name in livesData)) {
+        if (!(name in livesData) && !noLives) {
           livesData[name] = 3
           await supabase.from('rooms').update({ lives: livesData }).eq('code', code)
         }
@@ -140,7 +182,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       const { data: mv } = await supabase.from('moves').select('*').eq('room_code', code).order('created_at', { ascending: true })
       if (mv) {
         setMoves(mv)
-        if (!isSolo) {
+        if (!isSolo && !isAiGuesses) {
           const names = Array.from(new Set(mv.map((m: any) => m.player_name).filter((n: string) => n !== t.hostName))) as string[]
           if (!names.includes(name)) names.push(name)
           setPlayers(names)
@@ -171,7 +213,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   const nextTurn = async (currentPlayers: string[], currentTurn: string, hostName: string) => {
-    if (isSolo) return
+    if (isSolo || isAiGuesses) return
     const gamePlayers = currentPlayers.filter(p => p !== hostName)
     if (gamePlayers.length === 0) return
     if (!currentTurn || currentTurn === '') {
@@ -204,6 +246,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   const handleLoseLive = async (targetPlayer: string) => {
+    if (noLives) return
     const { data: room } = await supabase.from('rooms').select('lives').eq('code', code).single()
     const currentLives: Record<string, number> = room?.lives || {}
     const newCount = Math.max((currentLives[targetPlayer] ?? 3) - 1, 0)
@@ -219,6 +262,60 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         await supabase.from('moves').insert([{ room_code: code, player_name: t.hostName, item: t.eliminatedMsg(targetPlayer), status: 'approved', is_allowed: true }])
         setEliminatedPlayers(prev => [...prev, targetPlayer])
       }
+    }
+  }
+
+  // ИИ УГАДЫВАЕТ — задаёт вопрос
+  const askAiQuestion = async () => {
+    setIsAiThinking(true)
+    try {
+      const res = await fetch('/api/ai-guess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomCode: code, lang })
+      })
+      const data = await res.json()
+      setAiQuestion(data.text)
+      setAiQuestionType(data.type)
+      await supabase.from('moves').insert([{
+        room_code: code, player_name: t.hostName,
+        item: data.type === 'guess' ? `🎯 ${data.text}` : `❓ ${data.text}`,
+        status: 'approved', is_allowed: true
+      }])
+    } finally {
+      setIsAiThinking(false)
+    }
+  }
+
+  // ИИ УГАДЫВАЕТ — игрок отвечает да/нет
+  const answerAiQuestion = async (answer: boolean) => {
+    const { data: lastMove } = await supabase
+      .from('moves').select('*').eq('room_code', code)
+      .eq('player_name', t.hostName)
+      .order('created_at', { ascending: false }).limit(1).single()
+
+    if (lastMove) {
+      await supabase.from('moves').update({ is_allowed: answer }).eq('id', lastMove.id)
+      await supabase.from('moves').insert([{
+        room_code: code, player_name: playerName,
+        item: answer ? `✅ ${t.yesAnswer}` : `❌ ${t.noAnswer}`,
+        status: 'approved', is_allowed: answer
+      }])
+    }
+
+    if (aiQuestionType === 'guess' && answer) {
+      // ИИ угадал!
+      await supabase.from('rooms').update({ status: 'victory', winner: t.hostName }).eq('code', code)
+      setIsVictory(true)
+      setWinner(t.hostName)
+    } else if (aiQuestionType === 'guess' && !answer) {
+      // ИИ не угадал — продолжаем
+      setAiQuestion('')
+      await askAiQuestion()
+    } else {
+      // Обычный вопрос — задаём следующий
+      setAiQuestion('')
+      await askAiQuestion()
     }
   }
 
@@ -243,7 +340,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
   const handleSend = async () => {
     if (!inputValue.trim() || isGameOver || isVictory || isSpilled || isChecking || isEliminated || code === 'undefined') return
-    if (!isMyTurn && !isSolo) return
+    if (!isMyTurn && !isSolo && !isAiGuesses) return
     const text = inputValue.trim().toUpperCase()
 
     const isDuplicate = moves.some(m => m.item === text && m.player_name !== t.hostName)
@@ -288,7 +385,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         if (!result.allowed) await handleLoseLive(playerName)
       }
 
-      if (!isSolo) {
+      if (!isSolo && !isAiGuesses) {
         const hostName = isHost ? playerName : players[0]
         await nextTurn(players, turnPlayer, hostName)
       }
@@ -317,8 +414,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   const showVictory = isVictory
-  const showDefeat = isGameOver && !isVictory && isSolo
-  const showEliminated = isEliminated && !isSolo && !isVictory
+  const showDefeat = isGameOver && !isVictory && (isSolo || isAiGuesses)
+  const showEliminated = isEliminated && !isSolo && !isAiGuesses && !isVictory
   const showSurrender = hasSurrendered && !isVictory && !isGameOver
 
   const getPlaceholder = () => {
@@ -329,7 +426,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   }
 
   return (
-    <div className="h-screen bg-[#F0FFF4] flex flex-col p-6 relative font-sans overflow-hidden">
+    <div className="h-screen bg-[#F0FFF4] flex flex-col p-4 md:p-6 relative font-sans overflow-hidden">
 
       {/* HEADER */}
       <div className="flex justify-between items-center z-10 relative">
@@ -339,24 +436,38 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             {t.title}
           </button>
         </div>
-        <div className="flex gap-3 items-center">
-          {!isManual && (
-            <div className="flex gap-1">
-              {[...Array(Math.max(myLives, 0))].map((_, i) => <span key={i} className="text-2xl">🍋</span>)}
+        <div className="flex gap-2 md:gap-3 items-center">
+          {!isManual && !noLives && !isAiGuesses && (
+            <div className="flex gap-0.5">
+              {[...Array(Math.max(myLives, 0))].map((_, i) => <span key={i} className="text-xl md:text-2xl">🍋</span>)}
             </div>
+          )}
+          {noLives && !isManual && !isAiGuesses && (
+            <span className="text-lg font-black opacity-30">∞</span>
+          )}
+          {isHost && isManual && (
+            <button onClick={() => setShowRuleReminder(!showRuleReminder)} className={`text-lg transition-opacity ${showRuleReminder ? 'opacity-100' : 'opacity-30 hover:opacity-60'}`}>
+              📋
+            </button>
           )}
           <button onClick={() => setHasSurrendered(true)} className="text-[10px] font-black opacity-30 uppercase hover:opacity-100 transition-opacity">{t.surrender}</button>
         </div>
       </div>
 
+      {/* RULE REMINDER для хоста */}
+      <AnimatePresence>
+        {showRuleReminder && isHost && isManual && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="mt-3 px-5 py-3 rounded-[18px] bg-[#1A5319]/10 border-2 border-[#1A5319]/20">
+            <p className="text-[9px] font-black opacity-40 uppercase tracking-widest mb-1">{t.ruleReminder}</p>
+            <p className="font-black text-[#1A5319] text-sm">"{revealReason}"</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* CAMPERS — только мультиплеер */}
-      {!isSolo && (
+      {!isSolo && !isAiGuesses && (
         <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 border-b border-green-100 mt-2 items-center">
-          {/* Код комнаты — кликабельный, копируется */}
-          <button
-            onClick={copyCode}
-            className="font-black text-lg text-[#1A5319] tracking-widest hover:opacity-60 active:scale-95 transition-all shrink-0"
-          >
+          <button onClick={copyCode} className="font-black text-lg text-[#1A5319] tracking-widest hover:opacity-60 active:scale-95 transition-all shrink-0">
             {copied ? t.copied : code}
           </button>
           <span className="text-[9px] font-black opacity-20">·</span>
@@ -368,7 +479,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             return (
               <div key={i} className={`px-3 py-1 rounded-full text-[9px] font-bold border whitespace-nowrap flex items-center gap-1 transition-all ${pEliminated ? 'bg-red-100 text-red-800 border-red-200 line-through opacity-50' : isCurrentTurn ? 'bg-[#1A5319] text-white border-[#1A5319]' : 'bg-white/50 text-[#1A5319] border-green-200/50'}`}>
                 {pEliminated ? '💀' : isCurrentTurn ? '▶' : '●'} {p}
-                {!pEliminated && <span className="opacity-70 text-base">{'🍋'.repeat(Math.max(pLives, 0))}</span>}
+                {!pEliminated && !noLives && <span className="opacity-70 text-base">{'🍋'.repeat(Math.max(pLives, 0))}</span>}
+                {!pEliminated && noLives && <span className="opacity-40 text-xs">∞</span>}
               </div>
             )
           })}
@@ -386,10 +498,11 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       </AnimatePresence>
 
       {/* CHAT */}
-      <div className="flex-1 overflow-y-auto space-y-4 py-8 pb-44 no-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-3 py-4 pb-44 no-scrollbar">
         {moves.map((m, i) => {
           const isSystemMsg = m.player_name === t.hostName && (m.item.includes('🥤') || m.item.includes('💀') || m.item.includes('🏆'))
           const isHintMsg = m.player_name === t.hostName && !isSystemMsg
+          const isAiMsg = isAiGuesses && m.player_name === t.hostName
 
           if (isSystemMsg) {
             return (
@@ -403,16 +516,18 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
           return (
             <div key={m.id || i} className={`flex flex-col ${m.player_name === playerName ? 'items-end' : 'items-start'}`}>
-              <div className={`p-4 rounded-[25px] max-w-[80%] shadow-sm relative ${m.player_name === playerName ? 'bg-black text-white' : isHintMsg ? 'bg-green-100 text-green-900 border-2 border-green-200' : 'bg-white text-black'}`}>
-                {m.status === 'approved' && !isHintMsg && (
+              <div className={`p-4 rounded-[25px] max-w-[85%] md:max-w-[75%] shadow-sm relative ${m.player_name === playerName ? 'bg-black text-white' : isHintMsg || isAiMsg ? 'bg-green-100 text-green-900 border-2 border-green-200' : 'bg-white text-black'}`}>
+                {m.status === 'approved' && !isHintMsg && !isAiGuesses && (
                   <div className={`absolute -top-1 ${m.player_name === playerName ? '-left-2' : '-right-2'} text-[10px] bg-white rounded-full shadow-md w-5 h-5 flex items-center justify-center`}>
                     {m.is_allowed ? '✅' : '❌'}
                   </div>
                 )}
                 <p className="text-[8px] font-bold opacity-40 mb-1 uppercase tracking-widest">
-                  {isHintMsg ? t.hostHint : m.player_name}
+                  {isHintMsg || isAiMsg ? (isAiGuesses ? '🤖 AI' : t.hostHint) : m.player_name}
                 </p>
-                <p className={`font-bold italic ${m.status === 'approved' && !m.is_allowed ? 'line-through opacity-30' : ''}`}>"{m.item}"</p>
+                <p className={`font-bold text-base md:text-lg italic ${m.status === 'approved' && !m.is_allowed && !isAiGuesses ? 'line-through opacity-30' : ''}`}>
+                  "{m.item}"
+                </p>
 
                 {isHost && isManual && subMode === 'hardcore' && m.status === 'pending' && m.player_name !== playerName && (
                   <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
@@ -429,9 +544,9 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         <div className="pt-4 pb-4 text-center opacity-10 font-black uppercase tracking-[0.3em] text-[9px]">MADE BY SOLO</div>
       </div>
 
-      {/* INPUT */}
-      {!hasSurrendered && !isGameOver && !isVictory && !isEliminated && (
-        <div className="fixed bottom-8 left-6 right-6 z-40 space-y-2">
+      {/* INPUT — обычный режим */}
+      {!isAiGuesses && !hasSurrendered && !isGameOver && !isVictory && !isEliminated && (
+        <div className="fixed bottom-6 left-4 right-4 md:bottom-8 md:left-6 md:right-6 z-40 space-y-2">
           {!isMyTurn && turnPlayer && (
             <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-center text-[10px] font-black text-[#1A5319] opacity-40 uppercase tracking-widest">
               {t.notYourTurn(turnPlayer)}
@@ -443,13 +558,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && (isHost && isManual && turnPlayer === playerName ? sendHostHint() : handleSend())}
               disabled={isSpilled || isChecking || (!isMyTurn && !isSolo)}
-              className="flex-1 bg-white p-5 rounded-[22px] shadow-2xl font-bold outline-none border-none ring-offset-2 focus:ring-2 ring-green-300 disabled:opacity-40 transition-all"
+              className="flex-1 bg-white p-4 md:p-5 rounded-[22px] shadow-2xl font-bold text-base outline-none border-none ring-offset-2 focus:ring-2 ring-green-300 disabled:opacity-40 transition-all"
               placeholder={getPlaceholder()}
             />
             <button
               onClick={isHost && isManual && turnPlayer === playerName ? sendHostHint : handleSend}
               disabled={!inputValue.trim() || isSpilled || isChecking || (!isMyTurn && !isSolo)}
-              className="w-16 h-16 bg-[#22C55E] rounded-[22px] shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-all disabled:grayscale disabled:opacity-50"
+              className="w-14 h-14 md:w-16 md:h-16 bg-[#22C55E] rounded-[22px] shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-all disabled:grayscale disabled:opacity-50"
             >
               {isChecking ? '⏳' : '🧺'}
             </button>
@@ -459,7 +574,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                   const lastPlayerMove = [...moves].reverse().find(m => m.player_name !== t.hostName && m.player_name !== playerName)
                   if (lastPlayerMove) declareWinner(lastPlayerMove.player_name)
                 }}
-                className="w-16 h-16 bg-yellow-400 rounded-[22px] shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-all hover:bg-yellow-500"
+                className="w-14 h-14 md:w-16 md:h-16 bg-yellow-400 rounded-[22px] shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-all hover:bg-yellow-500"
               >
                 🏆
               </button>
@@ -468,14 +583,61 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         </div>
       )}
 
+      {/* INPUT — режим ИИ УГАДЫВАЕТ */}
+      {isAiGuesses && !isGameOver && !isVictory && !hasSurrendered && (
+        <div className="fixed bottom-6 left-4 right-4 md:bottom-8 md:left-6 md:right-6 z-40 space-y-3">
+          {aiQuestion && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-[22px] p-4 shadow-2xl text-center">
+              <p className="text-[9px] font-black opacity-30 uppercase mb-2">
+                {aiQuestionType === 'guess' ? t.aiGuessLabel : t.aiQuestionLabel}
+              </p>
+              <p className="font-black text-lg">{aiQuestion}</p>
+            </motion.div>
+          )}
+          {!aiQuestion && !isAiThinking && (
+            <button
+              onClick={askAiQuestion}
+              className="w-full py-5 bg-[#1A5319] text-white rounded-[22px] font-black uppercase text-sm shadow-xl active:scale-95 transition-all"
+            >
+              🤖 {t.startAiGame}
+            </button>
+          )}
+          {isAiThinking && (
+            <div className="w-full py-5 bg-gray-100 rounded-[22px] text-center font-black text-sm opacity-50">
+              {t.aiThinking}
+            </div>
+          )}
+          {aiQuestion && !isAiThinking && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => answerAiQuestion(false)}
+                className="flex-1 h-16 bg-red-500 text-white rounded-[22px] font-black text-lg active:scale-95 transition-all shadow-xl"
+              >
+                ❌ {t.noAnswer}
+              </button>
+              <button
+                onClick={() => answerAiQuestion(true)}
+                className="flex-1 h-16 bg-green-500 text-white rounded-[22px] font-black text-lg active:scale-95 transition-all shadow-xl"
+              >
+                ✅ {t.yesAnswer}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* OVERLAY: ПОБЕДА */}
       <AnimatePresence>
         {showVictory && (
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }} className="absolute inset-0 z-50 bg-[#F0FFF4]/95 backdrop-blur-md flex items-center justify-center p-6 text-center">
             <div className="w-full max-w-sm space-y-6">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.2, 1] }} transition={{ delay: 0.2, duration: 0.5 }} className="text-8xl">🏆</motion.div>
+              <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.2, 1] }} transition={{ delay: 0.2, duration: 0.5 }} className="text-8xl">
+                {isAiGuesses && winner === t.hostName ? '🤖' : '🏆'}
+              </motion.div>
               <div className="bg-[#1A5319] p-10 rounded-[40px] shadow-2xl">
-                <h2 className="text-4xl font-black italic mb-2 text-white">{winner === playerName ? t.victory : `🏆 ${winner}`}</h2>
+                <h2 className="text-4xl font-black italic mb-2 text-white">
+                  {isAiGuesses ? (winner === t.hostName ? t.aiGuessVictory : t.victory) : (winner === playerName ? t.victory : `🏆 ${winner}`)}
+                </h2>
                 <p className="opacity-40 text-[9px] uppercase font-bold tracking-widest text-white mb-2">{t.concept}</p>
                 <p className="text-2xl font-bold italic underline decoration-green-400 decoration-2 underline-offset-4 mb-8 text-white">"{revealReason}"</p>
                 <button onClick={() => router.push('/')} className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-[10px] tracking-widest hover:bg-gray-100">{t.menu}</button>
