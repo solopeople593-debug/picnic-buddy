@@ -39,6 +39,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const [aiQuestion, setAiQuestion] = useState<string>('')
   const [aiQuestionType, setAiQuestionType] = useState<'question' | 'guess'>('question')
   const [isAiThinking, setIsAiThinking] = useState(false)
+  const [aiAttemptsLeft, setAiAttemptsLeft] = useState(3)
+  const [isGuessPhase, setIsGuessPhase] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const isSolo = mode === 'solo'
@@ -69,12 +71,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `Ход игрока ${n}...`,
       hostHint: "ПОДСКАЗКА ХОСТА", copied: "СКОПИРОВАНО!",
       ruleReminder: "ТВОЁ ПРАВИЛО:",
-      aiGuessVictory: "ИИ УГАДАЛ!", aiGuessDefeat: "ИИ НЕ УГАДАЛ!",
+      aiGuessVictory: "ИИ УГАДАЛ!", aiGuessDefeat: "ТЫ ПОБЕДИЛ!",
+      aiDefeatSub: "ИИ НЕ СМОГ УГАДАТЬ ТВОЁ СЛОВО:",
       startAiGame: "НАЧАТЬ — ИИ ЗАДАЁТ ВОПРОСЫ",
       aiThinking: "ИИ ДУМАЕТ...",
       yesAnswer: "ДА", noAnswer: "НЕТ",
       aiGuessLabel: "🎯 ИИ ДУМАЕТ ЧТО ЭТО:",
       aiQuestionLabel: "❓ ВОПРОС ОТ ИИ:",
+      aiAttemptsLeft: (n: number) => `Попыток угадать: ${n}`,
+      guessPhaseLabel: "ИИ УГАДЫВАЕТ — ОСТАЛОСЬ ПОПЫТОК:",
       myTurn: "ТВОЙ ХОД",
       theirTurn: (n: string) => `ХОД: ${n}`,
     },
@@ -93,12 +98,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `${n}'s turn...`,
       hostHint: "HOST HINT", copied: "COPIED!",
       ruleReminder: "YOUR RULE:",
-      aiGuessVictory: "AI GUESSED IT!", aiGuessDefeat: "AI COULDN'T GUESS!",
+      aiGuessVictory: "AI GUESSED IT!", aiGuessDefeat: "YOU WIN!",
+      aiDefeatSub: "AI COULDN'T GUESS YOUR WORD:",
       startAiGame: "START — AI ASKS QUESTIONS",
       aiThinking: "AI IS THINKING...",
       yesAnswer: "YES", noAnswer: "NO",
       aiGuessLabel: "🎯 AI THINKS IT'S:",
       aiQuestionLabel: "❓ AI QUESTION:",
+      aiAttemptsLeft: (n: number) => `Guesses left: ${n}`,
+      guessPhaseLabel: "AI IS GUESSING — ATTEMPTS LEFT:",
       myTurn: "YOUR TURN",
       theirTurn: (n: string) => `TURN: ${n}`,
     },
@@ -117,12 +125,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `Хід гравця ${n}...`,
       hostHint: "ПІДКАЗКА ХОСТА", copied: "СКОПІЙОВАНО!",
       ruleReminder: "ТВОЄ ПРАВИЛО:",
-      aiGuessVictory: "ШІ ВГАДАВ!", aiGuessDefeat: "ШІ НЕ ВГАДАВ!",
+      aiGuessVictory: "ШІ ВГАДАВ!", aiGuessDefeat: "ТИ ПЕРЕМІГ!",
+      aiDefeatSub: "ШІ НЕ ЗМІГ ВГАДАТИ ТВОЄ СЛОВО:",
       startAiGame: "СТАРТ — ШІ СТАВИТЬ ПИТАННЯ",
       aiThinking: "ШІ ДУМАЄ...",
       yesAnswer: "ТАК", noAnswer: "НІ",
       aiGuessLabel: "🎯 ШІ ДУМАЄ ЩО ЦЕ:",
       aiQuestionLabel: "❓ ПИТАННЯ ВІД ШІ:",
+      aiAttemptsLeft: (n: number) => `Спроб вгадати: ${n}`,
+      guessPhaseLabel: "ШІ ВГАДУЄ — ЗАЛИШИЛОСЬ СПРОБ:",
       myTurn: "ТВІЙ ХІД",
       theirTurn: (n: string) => `ХІД: ${n}`,
     },
@@ -141,12 +152,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       notYourTurn: (n: string) => `${n} gājiens...`,
       hostHint: "VADĪTĀJA PADOMS", copied: "NOKOPĒTS!",
       ruleReminder: "TAVS NOTEIKUMS:",
-      aiGuessVictory: "AI UZMINĒJA!", aiGuessDefeat: "AI NEUZMINĒJA!",
+      aiGuessVictory: "AI UZMINĒJA!", aiGuessDefeat: "TU UZVARĒJI!",
+      aiDefeatSub: "AI NEUZMINĒJA TAVU VĀRDU:",
       startAiGame: "SĀKT — AI UZDOD JAUTĀJUMUS",
       aiThinking: "AI DOMĀ...",
       yesAnswer: "JĀ", noAnswer: "NĒ",
       aiGuessLabel: "🎯 AI DOMĀ KA TAS IR:",
       aiQuestionLabel: "❓ AI JAUTĀJUMS:",
+      aiAttemptsLeft: (n: number) => `Minējumi atlikuši: ${n}`,
+      guessPhaseLabel: "AI MIN — ATLIKUŠI MĒĢINĀJUMI:",
       myTurn: "TAVS GĀJIENS",
       theirTurn: (n: string) => `GĀJIENS: ${n}`,
     },
@@ -190,6 +204,18 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           if (!names.includes(name)) names.push(name)
           setPlayers(names)
         }
+        // Считаем попытки ИИ в режиме ai_guesses
+        if (isAiGuesses) {
+          const hostNames = ['ВЕДУЩИЙ ИИ', 'HOST AI', 'ВЕДУЧИЙ ШІ', 'VADĪTĀJS AI']
+          const guessCount = mv.filter((m: any) =>
+            hostNames.includes(m.player_name) && m.item.includes('🎯')
+          ).length
+          const questionCount = mv.filter((m: any) =>
+            hostNames.includes(m.player_name) && m.item.includes('❓')
+          ).length
+          setAiAttemptsLeft(Math.max(3 - guessCount, 0))
+          setIsGuessPhase(questionCount >= 7)
+        }
       }
     }
 
@@ -214,7 +240,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
     return () => { supabase.removeChannel(channel) }
   }, [code])
-    const copyCode = () => {
+
+  const copyCode = () => {
     navigator.clipboard.writeText(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -300,6 +327,9 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       const data = await res.json()
       setAiQuestion(data.text)
       setAiQuestionType(data.type)
+      setIsGuessPhase(data.isGuessPhase || false)
+      if (data.attemptsLeft !== undefined) setAiAttemptsLeft(data.attemptsLeft)
+
       await supabase.from('moves').insert([{
         room_code: code, player_name: t.hostName,
         item: data.type === 'guess' ? `🎯 ${data.text}` : `❓ ${data.text}`,
@@ -326,9 +356,24 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     }
 
     if (aiQuestionType === 'guess' && answer) {
+      // ИИ угадал — ИИ победил
       await supabase.from('rooms').update({ status: 'victory', winner: t.hostName }).eq('code', code)
       setIsVictory(true)
       setWinner(t.hostName)
+    } else if (aiQuestionType === 'guess' && !answer) {
+      // ИИ не угадал — уменьшаем попытки
+      const newAttempts = aiAttemptsLeft - 1
+      setAiAttemptsLeft(newAttempts)
+      setAiQuestion('')
+
+      if (newAttempts <= 0) {
+        // Попытки кончились — игрок победил!
+        await supabase.from('rooms').update({ status: 'victory', winner: playerName }).eq('code', code)
+        setIsVictory(true)
+        setWinner(playerName)
+      } else {
+        await askAiQuestion()
+      }
     } else {
       setAiQuestion('')
       await askAiQuestion()
@@ -486,16 +531,16 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     if (!isMyTurn && turnPlayer && !isAiHost) return t.notYourTurn(turnPlayer)
     return t.placeholder
   }
-    return (
+
+  return (
     <div className="min-h-screen bg-[#F0FFF4] font-sans">
       <div className="w-full max-w-2xl mx-auto flex flex-col h-screen px-4 md:px-8 py-4 md:py-6">
 
-        {/* ══ HEADER ══ */}
+        {/* HEADER */}
         <div className="flex justify-between items-center relative mb-3">
           <button onClick={() => router.push('/')} className="text-2xl opacity-20 hover:opacity-60 transition-opacity">←</button>
           <div className="absolute left-1/2 -translate-x-1/2">
-            <button onClick={() => router.push('/')}
-              className="font-black text-sm md:text-base text-[#1A5319] opacity-40 hover:opacity-100 transition-opacity uppercase tracking-widest">
+            <button onClick={() => router.push('/')} className="font-black text-sm md:text-base text-[#1A5319] opacity-40 hover:opacity-100 transition-opacity uppercase tracking-widest">
               {t.title}
             </button>
           </div>
@@ -504,6 +549,19 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
               <div className="flex gap-0.5">
                 {[...Array(Math.max(myLives, 0))].map((_, i) =>
                   <span key={i} className="text-2xl md:text-3xl">🍋</span>)}
+              </div>
+            )}
+            {/* Батарейки ИИ в режиме ai_guesses */}
+            {isAiGuesses && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-black opacity-30 uppercase">AI</span>
+                <div className="flex gap-0.5">
+                  {[...Array(3)].map((_, i) => (
+                    <span key={i} className={`text-xl transition-all ${i < aiAttemptsLeft ? 'opacity-100' : 'opacity-20 grayscale'}`}>
+                      🔋
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
             {noLives && !isManual && !isAiGuesses && (
@@ -515,18 +573,16 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                 📋
               </button>
             )}
-            <button onClick={() => setHasSurrendered(true)}
-              className="text-xs font-black opacity-30 uppercase hover:opacity-100 transition-opacity">
+            <button onClick={() => setHasSurrendered(true)} className="text-xs font-black opacity-30 uppercase hover:opacity-100 transition-opacity">
               {t.surrender}
             </button>
           </div>
         </div>
 
-        {/* ══ RULE REMINDER ══ */}
+        {/* RULE REMINDER */}
         <AnimatePresence>
           {showRuleReminder && isHost && isManual && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
               className="mb-3 px-5 py-3 rounded-[18px] bg-[#1A5319]/10 border-2 border-[#1A5319]/20">
               <p className="text-[10px] font-black opacity-40 uppercase tracking-widest mb-1">{t.ruleReminder}</p>
               <p className="font-black text-[#1A5319] text-base">"{revealReason}"</p>
@@ -534,11 +590,10 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           )}
         </AnimatePresence>
 
-        {/* ══ CAMPERS ══ */}
+        {/* CAMPERS */}
         {!isSolo && !isAiGuesses && (
           <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 border-b border-green-100 mb-3 items-center">
-            <button onClick={copyCode}
-              className="font-black text-xl text-[#1A5319] tracking-widest hover:opacity-60 active:scale-95 transition-all shrink-0">
+            <button onClick={copyCode} className="font-black text-xl text-[#1A5319] tracking-widest hover:opacity-60 active:scale-95 transition-all shrink-0">
               {copied ? t.copied : code}
             </button>
             <span className="text-[10px] font-black opacity-20">·</span>
@@ -549,11 +604,9 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
               const isCurrentTurn = turnPlayer === p
               return (
                 <div key={i} className={`px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap flex items-center gap-1.5 transition-all
-                  ${pEliminated
-                    ? 'bg-red-100 text-red-800 border-red-200 line-through opacity-50'
-                    : isCurrentTurn
-                    ? 'bg-[#1A5319] text-white border-[#1A5319] shadow-md'
-                    : 'bg-white/50 text-[#1A5319] border-green-200/50'}`}>
+                  ${pEliminated ? 'bg-red-100 text-red-800 border-red-200 line-through opacity-50'
+                  : isCurrentTurn ? 'bg-[#1A5319] text-white border-[#1A5319] shadow-md'
+                  : 'bg-white/50 text-[#1A5319] border-green-200/50'}`}>
                   {pEliminated ? '💀' : isCurrentTurn ? '▶' : '●'} {p}
                   {!pEliminated && !noLives && <span className="text-base">{'🍋'.repeat(Math.max(pLives, 0))}</span>}
                   {!pEliminated && noLives && <span className="opacity-40 text-xs">∞</span>}
@@ -563,31 +616,39 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           </div>
         )}
 
-        {/* ══ WHISPER ══ */}
+        {/* WHISPER */}
         <AnimatePresence>
           {whisper && isHost && isAssist && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-              className={`mb-3 px-5 py-3 rounded-[18px] text-sm font-bold border-2
-                ${whisperDanger ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+              className={`mb-3 px-5 py-3 rounded-[18px] text-sm font-bold border-2 ${whisperDanger ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
               <span className="opacity-50 text-[10px] uppercase tracking-widest block mb-1">{t.whisperLabel}</span>
               {whisper}
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ══ AI HOST — индикатор хода ══ */}
+        {/* AI HOST индикатор хода */}
         {isAiHost && players.length > 1 && !isGameOver && !isVictory && (
-          <motion.div
-            key={turnPlayer}
-            initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
-            className={`text-center text-xs font-black uppercase tracking-widest mb-2 py-1.5 rounded-full
-              ${turnPlayer === playerName ? 'text-[#1A5319] bg-green-100' : 'text-gray-400 bg-gray-50'}`}>
+          <motion.div key={turnPlayer} initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+            className={`text-center text-xs font-black uppercase tracking-widest mb-2 py-1.5 rounded-full ${turnPlayer === playerName ? 'text-[#1A5319] bg-green-100' : 'text-gray-400 bg-gray-50'}`}>
             {turnPlayer === playerName ? `▶ ${t.myTurn}` : `⏳ ${t.theirTurn(turnPlayer)}`}
           </motion.div>
         )}
 
-        {/* ══ CHAT ══ */}
+        {/* AI GUESSES — индикатор фазы угадывания */}
+        {isAiGuesses && isGuessPhase && !isVictory && !isGameOver && (
+          <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+            className="text-center text-xs font-black uppercase tracking-widest mb-2 py-2 px-4 rounded-full bg-orange-100 text-orange-800 flex items-center justify-center gap-2">
+            <span>{t.guessPhaseLabel}</span>
+            <span className="flex gap-0.5">
+              {[...Array(3)].map((_, i) => (
+                <span key={i} className={i < aiAttemptsLeft ? 'opacity-100' : 'opacity-20 grayscale'}>🔋</span>
+              ))}
+            </span>
+          </motion.div>
+        )}
+
+        {/* CHAT */}
         <div className={`flex-1 overflow-y-auto space-y-3 py-3 no-scrollbar ${isAiGuesses ? 'pb-72' : 'pb-32'}`}>
           {moves.map((m, i) => {
             const isSystemMsg = m.player_name === t.hostName &&
@@ -611,27 +672,20 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             return (
               <div key={m.id || i} className={`flex flex-col ${m.player_name === playerName ? 'items-end' : 'items-start'}`}>
                 <div className={`p-4 md:p-5 rounded-[25px] max-w-[85%] md:max-w-[70%] shadow-sm relative
-                  ${m.player_name === playerName
-                    ? 'bg-black text-white'
-                    : isHintMsg || isAiMsg
-                    ? 'bg-green-100 text-green-900 border-2 border-green-200'
-                    : 'bg-white text-black'}`}>
-
+                  ${m.player_name === playerName ? 'bg-black text-white'
+                  : isHintMsg || isAiMsg ? 'bg-green-100 text-green-900 border-2 border-green-200'
+                  : 'bg-white text-black'}`}>
                   {m.status === 'approved' && !isHintMsg && !isAiGuesses && (
-                    <div className={`absolute -top-1 ${m.player_name === playerName ? '-left-2' : '-right-2'}
-                      text-xs bg-white rounded-full shadow-md w-6 h-6 flex items-center justify-center`}>
+                    <div className={`absolute -top-1 ${m.player_name === playerName ? '-left-2' : '-right-2'} text-xs bg-white rounded-full shadow-md w-6 h-6 flex items-center justify-center`}>
                       {m.is_allowed ? '✅' : '❌'}
                     </div>
                   )}
-
                   <p className="text-[11px] font-bold opacity-40 mb-1 uppercase tracking-widest">
                     {isHintMsg || isAiMsg ? (isAiGuesses ? '🤖 AI' : t.hostHint) : m.player_name}
                   </p>
-                  <p className={`font-bold text-xl md:text-2xl italic
-                    ${m.status === 'approved' && !m.is_allowed && !isAiGuesses ? 'line-through opacity-30' : ''}`}>
+                  <p className={`font-bold text-xl md:text-2xl italic ${m.status === 'approved' && !m.is_allowed && !isAiGuesses ? 'line-through opacity-30' : ''}`}>
                     "{m.item}"
                   </p>
-
                   {isHost && isManual && subMode === 'hardcore' && m.status === 'pending' && m.player_name !== playerName && (
                     <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
                       <button onClick={() => judge(m.id, true)} className="bg-green-500 text-white px-4 py-2 rounded-full text-xs font-black">✅ OK</button>
@@ -647,10 +701,9 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           <div className="pt-2 pb-2 text-center opacity-10 font-black uppercase tracking-[0.3em] text-[10px]">MADE BY SOLO</div>
         </div>
 
-        {/* ══ INPUT обычный ══ */}
+        {/* INPUT обычный */}
         {!isAiGuesses && !hasSurrendered && !isGameOver && !isVictory && !isEliminated && (
-          <div className="sticky bottom-0 bg-[#F0FFF4] pt-2 pb-4 space-y-2"
-            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+          <div className="sticky bottom-0 bg-[#F0FFF4] pt-2 pb-4 space-y-2" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
             {!canType && turnPlayer && !isAiGuesses && (
               <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
                 className="text-center text-xs font-black text-[#1A5319] opacity-40 uppercase tracking-widest">
@@ -658,33 +711,21 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
               </motion.div>
             )}
             <div className="flex gap-2">
-              <input
-                value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    isHost && isManual && turnPlayer === playerName ? sendHostHint() : handleSend()
-                  }
-                }}
+              <input value={inputValue} onChange={e => setInputValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { isHost && isManual && turnPlayer === playerName ? sendHostHint() : handleSend() } }}
                 disabled={!canType}
                 className="flex-1 bg-white p-4 md:p-5 rounded-[22px] shadow-2xl font-bold text-base md:text-lg outline-none border-none ring-offset-2 focus:ring-2 ring-green-300 disabled:opacity-40 transition-all"
-                placeholder={getPlaceholder()}
-              />
-              <button
-                onClick={isHost && isManual && turnPlayer === playerName ? sendHostHint : handleSend}
+                placeholder={getPlaceholder()} />
+              <button onClick={isHost && isManual && turnPlayer === playerName ? sendHostHint : handleSend}
                 disabled={!inputValue.trim() || !canType}
                 className="w-14 h-14 md:w-16 md:h-16 bg-[#22C55E] rounded-[22px] shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-all disabled:grayscale disabled:opacity-50">
                 {isChecking ? '⏳' : '🧺'}
               </button>
               {isHost && isManual && (
-                <button
-                  onClick={() => {
-                    const lastPlayerMove = [...moves].reverse().find(
-                      m => m.player_name !== t.hostName && m.player_name !== playerName
-                    )
-                    if (lastPlayerMove) declareWinner(lastPlayerMove.player_name)
-                  }}
-                  className="w-14 h-14 md:w-16 md:h-16 bg-yellow-400 rounded-[22px] shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-all hover:bg-yellow-500">
+                <button onClick={() => {
+                  const lastPlayerMove = [...moves].reverse().find(m => m.player_name !== t.hostName && m.player_name !== playerName)
+                  if (lastPlayerMove) declareWinner(lastPlayerMove.player_name)
+                }} className="w-14 h-14 md:w-16 md:h-16 bg-yellow-400 rounded-[22px] shadow-xl flex items-center justify-center text-2xl active:scale-95 transition-all hover:bg-yellow-500">
                   🏆
                 </button>
               )}
@@ -692,10 +733,9 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           </div>
         )}
 
-        {/* ══ INPUT ai_guesses ══ */}
+        {/* INPUT ai_guesses */}
         {isAiGuesses && !isGameOver && !isVictory && !hasSurrendered && (
-          <div className="sticky bottom-0 bg-[#F0FFF4] pt-2 pb-4 space-y-3"
-            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+          <div className="sticky bottom-0 bg-[#F0FFF4] pt-2 pb-4 space-y-3" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
             {aiQuestion && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className="bg-white rounded-[22px] p-5 shadow-2xl text-center">
@@ -703,11 +743,17 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                   {aiQuestionType === 'guess' ? t.aiGuessLabel : t.aiQuestionLabel}
                 </p>
                 <p className="font-black text-xl md:text-2xl">{aiQuestion}</p>
+                {aiQuestionType === 'guess' && (
+                  <div className="flex justify-center gap-1 mt-2">
+                    {[...Array(3)].map((_, i) => (
+                      <span key={i} className={`text-lg ${i < aiAttemptsLeft ? 'opacity-100' : 'opacity-20 grayscale'}`}>🔋</span>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
             {!aiQuestion && !isAiThinking && (
-              <button onClick={askAiQuestion}
-                className="w-full py-5 bg-[#1A5319] text-white rounded-[22px] font-black uppercase text-base shadow-xl active:scale-95 transition-all">
+              <button onClick={askAiQuestion} className="w-full py-5 bg-[#1A5319] text-white rounded-[22px] font-black uppercase text-base shadow-xl active:scale-95 transition-all">
                 🤖 {t.startAiGame}
               </button>
             )}
@@ -730,29 +776,29 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             )}
           </div>
         )}
+      </div>
 
-      </div>{/* конец max-w контейнера */}
-
-      {/* ══ OVERLAY ПОБЕДА ══ */}
+      {/* OVERLAY ПОБЕДА */}
       <AnimatePresence>
         {showVictory && (
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }}
             className="absolute inset-0 z-50 bg-[#F0FFF4]/95 backdrop-blur-md flex items-center justify-center p-6 text-center">
             <div className="w-full max-w-sm space-y-6">
-              <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.2, 1] }} transition={{ delay: 0.2, duration: 0.5 }}
-                className="text-8xl">
-                {isAiGuesses && winner === t.hostName ? '🤖' : '🏆'}
+              <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.2, 1] }} transition={{ delay: 0.2, duration: 0.5 }} className="text-8xl">
+                {isAiGuesses && winner === t.hostName ? '🤖' : isAiGuesses ? '🎉' : '🏆'}
               </motion.div>
               <div className="bg-[#1A5319] p-10 rounded-[40px] shadow-2xl">
                 <h2 className="text-4xl font-black italic mb-2 text-white">
                   {isAiGuesses
-                    ? (winner === t.hostName ? t.aiGuessVictory : t.victory)
+                    ? (winner === t.hostName ? t.aiGuessVictory : t.aiGuessDefeat)
                     : (winner === playerName ? t.victory : `🏆 ${winner}`)}
                 </h2>
+                {isAiGuesses && winner !== t.hostName && (
+                  <p className="opacity-60 text-sm font-bold text-white mb-2">{t.aiDefeatSub}</p>
+                )}
                 <p className="opacity-40 text-[10px] uppercase font-bold tracking-widest text-white mb-2">{t.concept}</p>
                 <p className="text-2xl font-bold italic underline decoration-green-400 decoration-2 underline-offset-4 mb-8 text-white">"{revealReason}"</p>
-                <button onClick={() => router.push('/')}
-                  className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">
+                <button onClick={() => router.push('/')} className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">
                   {t.menu}
                 </button>
               </div>
@@ -761,73 +807,61 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         )}
       </AnimatePresence>
 
-      {/* ══ OVERLAY ПОРАЖЕНИЕ ══ */}
+      {/* OVERLAY ПОРАЖЕНИЕ */}
       <AnimatePresence>
         {showDefeat && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}
             className="absolute inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-6 text-center">
             <div className="w-full max-w-sm space-y-6">
-              <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }}
-                className="text-8xl">🥀</motion.div>
+              <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="text-8xl">🥀</motion.div>
               <div className="bg-[#1a1a1a] border border-white/10 p-10 rounded-[40px] shadow-2xl">
                 <h2 className="text-4xl font-black italic mb-2 text-white">{t.defeat}</h2>
                 <p className="opacity-40 text-[10px] uppercase font-bold tracking-widest text-white mb-2">{t.concept}</p>
                 <p className="text-2xl font-bold italic underline decoration-red-400 decoration-2 underline-offset-4 mb-8 text-white">"{revealReason}"</p>
-                <button onClick={() => router.push('/')}
-                  className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">
-                  {t.menu}
-                </button>
+                <button onClick={() => router.push('/')} className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">{t.menu}</button>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ══ OVERLAY ВЫБЫЛ ══ */}
+      {/* OVERLAY ВЫБЫЛ */}
       <AnimatePresence>
         {showEliminated && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}
             className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-6 text-center">
             <div className="w-full max-w-sm space-y-6">
-              <motion.div initial={{ scale: 1.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.2 }}
-                className="text-8xl">💀</motion.div>
+              <motion.div initial={{ scale: 1.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.2 }} className="text-8xl">💀</motion.div>
               <div className="bg-[#1a1a1a] border border-white/10 p-10 rounded-[40px] shadow-2xl">
                 <h2 className="text-4xl font-black italic mb-2 text-white">{t.eliminated}</h2>
                 <p className="opacity-40 text-[10px] uppercase font-bold tracking-widest text-white mb-2">{t.concept}</p>
                 <p className="text-2xl font-bold italic underline decoration-red-400 decoration-2 underline-offset-4 mb-8 text-white">"{revealReason}"</p>
-                <button onClick={() => router.push('/')}
-                  className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">
-                  {t.menu}
-                </button>
+                <button onClick={() => router.push('/')} className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">{t.menu}</button>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ══ OVERLAY СДАЧА ══ */}
+      {/* OVERLAY СДАЧА */}
       <AnimatePresence>
         {showSurrender && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}
             className="absolute inset-0 z-50 bg-[#F0FFF4]/95 backdrop-blur-md flex items-center justify-center p-6 text-center">
             <div className="w-full max-w-sm space-y-6">
-              <motion.div initial={{ rotate: -10, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} transition={{ delay: 0.2 }}
-                className="text-8xl">🏳️</motion.div>
+              <motion.div initial={{ rotate: -10, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="text-8xl">🏳️</motion.div>
               <div className="bg-[#1A5319] p-10 rounded-[40px] shadow-2xl">
                 <h2 className="text-4xl font-black italic mb-2 text-white">{t.surrenderTitle}</h2>
                 <p className="opacity-40 text-[10px] uppercase font-bold tracking-widest text-white mb-2">{t.concept}</p>
                 <p className="text-2xl font-bold italic underline decoration-green-400 decoration-2 underline-offset-4 mb-8 text-white">"{revealReason}"</p>
-                <button onClick={() => router.push('/')}
-                  className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">
-                  {t.menu}
-                </button>
+                <button onClick={() => router.push('/')} className="w-full bg-white text-black py-5 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-gray-100">{t.menu}</button>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ══ OVERLAY SPILLED ══ */}
+      {/* OVERLAY SPILLED */}
       <AnimatePresence>
         {isSolo && isSpilled && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
@@ -840,7 +874,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   )
 }
