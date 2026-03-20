@@ -1,40 +1,87 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { supabase } from "../lib/supabase";
 
-export default function GamePage() {
+// Интерфейс для строгой типизации ходов
+interface Move {
+  id: string;
+  player_name: string;
+  item: string;
+  is_allowed: boolean;
+  status: string;
+  room_code: string;
+}
+
+function GameContent() {
   const searchParams = useSearchParams();
-  const code = searchParams.get("code");
-  const mode = searchParams.get("mode"); // 'ai', 'manual', 'auto'
+  const code = searchParams.get("code") || "";
+  const mode = searchParams.get("mode") || "ai"; // ai, manual, auto, join
   
-  const [myRole, setMyRole] = useState<"host" | "player">("player");
-  const [turnIndex, setTurnIndex] = useState(0);
-  const [players, setPlayers] = useState<any[]>(["Host", "Player 1"]); // В будущем подтянем из базы
-  const [history, setHistory] = useState<any[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [secretRule, setSecretRule] = useState(searchParams.get("rule") || "");
+  const [username, setUsername] = useState<string>("");
+  const [turnIndex, setTurnIndex] = useState<number>(0);
+  const [history, setHistory] = useState<Move[]>([]);
+  const [input, setInput] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [rule, setRule] = useState<string>("");
 
-  // Определяем, чей сейчас ход
-  const isMyTurn = (turnIndex % players.length) === (myRole === "host" ? 0 : 1); 
+  const isHost = mode !== 'join';
 
-  // 1. Подписка на Realtime (чтобы видеть ходы других)
   useEffect(() => {
+    const savedName = localStorage.getItem("picnic_username") || (isHost ? "Host" : "Guest");
+    setUsername(savedName);
+
+    const fetchInitialData = async () => {
+      // 1. Загружаем данные игры
+      const { data: gameData } = await supabase
+        .from('games')
+        .select('*')
+        .eq('code', code)
+        .single();
+      
+      if (gameData) {
+        setRule(gameData.rule);
+        setTurnIndex(gameData.turn_index || 0);
+      }
+
+      // 2. Загружаем историю
+      const { data: moves } = await supabase
+        .from('moves')
+        .select('*')
+        .eq('room_code', code)
+        .order('id', { ascending: true });
+      
+      if (moves) setHistory(moves as Move[]);
+    };
+
+    fetchInitialData();
+
+    // 3. Подписка на Realtime обновления
     const channel = supabase
       .channel(`room-${code}`)
-      .on('postgres_changes', { event: 'INSERT', table: 'moves', filter: `room_code=eq.${code}` }, 
-      (payload) => {
-        setHistory(prev => [...prev, payload.new]);
-        setTurnIndex(prev => prev + 1);
+      .on('postgres_changes', { 
+        event: '*', 
+        table: 'moves', 
+        filter: `room_code=eq.${code}` 
+      }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setHistory(prev => [...prev, payload.new as Move]);
+          setTurnIndex(prev => prev + 1);
+        } else if (payload.eventType === 'UPDATE') {
+          setHistory(prev => prev.map(m => m.id === payload.new.id ? (payload.new as Move) : m));
+        }
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [code]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [code, isHost]);
 
-  // 2. Отправка хода
+  // Очередность: четные ходит Хост, нечетные - Гость
+  const isMyTurn = isHost ? (turnIndex % 2 === 0) : (turnIndex % 2 === 1);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !isMyTurn || isLoading) return;
@@ -43,35 +90,42 @@ export default function GamePage() {
     const currentInput = input;
     setInput("");
 
-    let isAllowed = false;
+    let isAllowed = true;
+    let status = 'done';
 
-    // ЛОГИКА ПРОВЕРКИ
-    if (mode === "ai" || mode === "auto") {
-      const res = await fetch("/api/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ item: currentInput, rule: secretRule })
-      });
-      const data = await res.json();
-      isAllowed = data.allowed;
-    } else {
-      // В Manual режиме пока ставим "pending", пока хост не нажмет кнопку
-      isAllowed = true; 
+    // Если ИИ участвует в проверке
+    if (mode === 'ai' || mode === 'auto') {
+      try {
+        const res = await fetch("/api/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item: currentInput, rule: rule })
+        });
+        const data = await res.json();
+        isAllowed = data.allowed;
+      } catch (err) {
+        console.error("AI check failed", err);
+      }
+    } else if (mode === 'manual' && !isHost) {
+      // Если режим ручной и пишет НЕ хост, ждем вердикта
+      status = 'pending';
     }
 
-    // Сохраняем ход в базу
+    // Сохраняем ход
     await supabase.from('moves').insert([{
       room_code: code,
-      player_name: myRole === "host" ? "Host" : "You",
+      player_name: username,
       item: currentInput,
       is_allowed: isAllowed,
-      status: mode === "manual" ? "pending" : "done"
+      status: status
     }]);
 
+    // Обновляем счетчик ходов в базе
+    await supabase.from('games').update({ turn_index: turnIndex + 1 }).eq('code', code);
+    
     setIsLoading(false);
   };
 
-  // 3. Ручное подтверждение (для Manual Host)
   const judgeMove = async (moveId: string, result: boolean) => {
     await supabase
       .from('moves')
@@ -80,56 +134,77 @@ export default function GamePage() {
   };
 
   return (
-    <main className="min-h-screen bg-background text-text-main p-4">
-      {/* Шапка с очередью */}
-      <div className="max-w-md mx-auto bg-white rounded-3xl p-4 shadow-sm mb-6 flex justify-between items-center">
-        <div>
-          <p className="text-[10px] font-black uppercase text-gray-400">Current Turn</p>
-          <p className="font-bold text-accent">
-            {isMyTurn ? "👉 YOUR TURN" : `Waiting for ${players[turnIndex % players.length]}`}
-          </p>
+    <main className="min-h-screen bg-[#FDFCF8] p-4 font-sans text-slate-900">
+      <div className="max-w-md mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6 flex justify-between items-center">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</p>
+            <p className={`font-bold ${isMyTurn ? "text-green-500" : "text-orange-400"}`}>
+              {isMyTurn ? "● YOUR TURN" : "● WAITING..."}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Room</p>
+            <p className="font-bold text-gray-700">{code}</p>
+          </div>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] font-black uppercase text-gray-400">Room</p>
-          <p className="font-mono font-bold">{code}</p>
-        </div>
-      </div>
 
-      {/* Чат */}
-      <div className="max-w-md mx-auto space-y-4 pb-32">
-        {history.map((move, i) => (
-          <div key={i} className={`flex flex-col ${move.player_name === "You" ? "items-end" : "items-start"}`}>
-            <div className={`p-4 rounded-2xl shadow-sm border bg-white`}>
-              <p className="text-[10px] font-bold text-gray-400 uppercase">{move.player_name}</p>
-              <div className="flex items-center gap-3">
-                <span className="text-xl font-black">{move.item}</span>
-                {move.status === "pending" && myRole === "host" ? (
-                  <div className="flex gap-2">
-                    <button onClick={() => judgeMove(move.id, true)}>✅</button>
-                    <button onClick={() => judgeMove(move.id, false)}>❌</button>
-                  </div>
-                ) : (
-                  <span>{move.is_allowed ? "✅" : "❌"}</span>
-                )}
+        {/* History Area */}
+        <div className="space-y-4 mb-32">
+          {history.map((move) => (
+            <div key={move.id} className={`flex ${move.player_name === username ? "justify-end" : "justify-start"}`}>
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50 border-b-2 max-w-[85%]">
+                <p className="text-[9px] font-bold text-gray-400 mb-1 uppercase">{move.player_name}</p>
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-lg">{move.item}</span>
+                  {move.status === 'pending' ? (
+                    isHost ? (
+                      <div className="flex gap-2 ml-2">
+                        <button onClick={() => judgeMove(move.id, true)} className="hover:scale-125 transition-transform">✅</button>
+                        <button onClick={() => judgeMove(move.id, false)} className="hover:scale-125 transition-transform">❌</button>
+                      </div>
+                    ) : (
+                      <span className="animate-pulse">⏳</span>
+                    )
+                  ) : (
+                    <span className="text-xl">{move.is_allowed ? "✅" : "❌"}</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      {/* Ввод текста (только если твой ход) */}
-      <div className="fixed bottom-0 left-0 right-0 p-6">
-        <form onSubmit={handleSend} className="max-w-md mx-auto flex gap-2">
-          <input
-            disabled={!isMyTurn || isLoading}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={isMyTurn ? "I'm bringing..." : "Wait for your turn..."}
-            className="flex-1 p-4 rounded-2xl border-2 outline-none focus:border-accent disabled:bg-gray-100"
-          />
-          <button className="bg-accent text-white p-4 rounded-2xl font-bold">🚀</button>
-        </form>
+        {/* Input Form */}
+        <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#FDFCF8] via-[#FDFCF8] to-transparent">
+          <form onSubmit={handleSend} className="max-w-md mx-auto flex gap-2">
+            <input 
+              disabled={!isMyTurn || isLoading}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={isMyTurn ? "I'm bringing..." : "Wait for your turn..."}
+              className="flex-1 p-5 rounded-2xl border-2 border-gray-100 outline-none focus:border-green-400 transition-all shadow-lg disabled:bg-gray-50 disabled:text-gray-400"
+            />
+            <button 
+              type="submit"
+              disabled={!isMyTurn || isLoading}
+              className="bg-green-500 text-white w-16 rounded-2xl shadow-lg flex items-center justify-center text-2xl hover:bg-green-600 active:scale-95 transition-all disabled:grayscale"
+            >
+              🧺
+            </button>
+          </form>
+        </div>
       </div>
     </main>
+  );
+}
+
+// Обертка для работы с useSearchParams в Next.js
+export default function GamePage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center">Loading game...</div>}>
+      <GameContent />
+    </Suspense>
   );
 }
