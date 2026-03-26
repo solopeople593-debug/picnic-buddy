@@ -37,7 +37,6 @@ export async function POST(req: Request) {
   try {
     const { item, roomCode, lang, needHint } = await req.json()
 
-    // Ищем pending ход
     const { data: lastMove } = await supabase
       .from('moves')
       .select('id')
@@ -50,7 +49,6 @@ export async function POST(req: Request) {
 
     moveId = lastMove?.id || null
 
-    // Достаём правило
     const { data: room } = await supabase
       .from('rooms')
       .select('secret_rule')
@@ -58,7 +56,6 @@ export async function POST(req: Request) {
       .single()
     const rule = room?.secret_rule || '???'
 
-    // Контекст принятых слов
     const { data: moves } = await supabase
       .from('moves')
       .select('item, is_allowed, player_name')
@@ -70,31 +67,48 @@ export async function POST(req: Request) {
       .map(m => m.item)
       .join(', ') || 'none'
 
+    const rejectedWords = moves
+      ?.filter(m => !m.is_allowed && !hostNames.includes(m.player_name))
+      .map(m => m.item)
+      .join(', ') || 'none'
+
     const totalMoves = moves?.filter(m => !hostNames.includes(m.player_name)).length || 0
 
-    // --- ПРОМПТ ДЛЯ ПРОВЕРКИ СЛОВА ---
-    // #2 fix: guessed=true только если игрок ЯВНО называет само правило/концепт
-    // #10 fix: hint — это просто новое слово по правилу, без объяснений
-    const checkPrompt = `You are the host of "I'm going on a picnic" game. Language: ${lang}.
+    const checkPrompt = `You are the strict host of "I'm going on a picnic" game. Language: ${lang}.
 Secret rule: "${rule}"
 Word submitted by player: "${item}"
-Previously accepted words: ${acceptedWords}
+Previously ACCEPTED words (follow the rule): ${acceptedWords}
+Previously REJECTED words (do NOT follow the rule): ${rejectedWords}
 Total player moves so far: ${totalMoves}
 
-TASK: Evaluate if the submitted word follows the secret rule.
+STEP 1 — ANALYZE THE RULE:
+First, understand what the rule "${rule}" means precisely.
+- If it's a letter rule (e.g. "words starting with A"): check the EXACT letter
+- If it's a category rule (e.g. "metal objects"): check if the item truly belongs
+- If it's a pattern rule (e.g. "words with double letters"): check the EXACT pattern
+- If it's a property rule (e.g. "round objects"): check if the item has that property
+- Use the accepted/rejected words as reference to calibrate your understanding
 
-RULES FOR "guessed":
-- "guessed" must be TRUE ONLY if the player's submitted word IS the rule itself, or directly names/describes the rule concept exactly.
-- "guessed" must be FALSE if the word just follows the rule (e.g. fits the pattern) but doesn't reveal what the rule is.
-- Example: rule is "words with double letters" — "COFFEE" fits the rule → guessed=false. If player submits "DOUBLE LETTERS" → guessed=true.
-- Be strict. Do NOT set guessed=true just because the word fits well.
+STEP 2 — EVALUATE:
+Does "${item}" follow the rule "${rule}"?
+Be CONSISTENT with previously accepted/rejected words.
+Be STRICT and PRECISE — do not be lenient.
 
-RULES FOR "hint" (only when needHint=true):
-- Return ONE new example word that fits the secret rule "${rule}".
-- Do NOT explain the rule. Do NOT give any clues about what the rule is.
-- Just return a single word that fits. Nothing else.
-- The word must NOT already be in: ${acceptedWords}
-- If needHint=false, return hint=null.
+STEP 3 — GUESSED CHECK:
+"guessed" = true ONLY IF the player is naming the RULE ITSELF, not just an item that fits.
+Examples:
+- Rule "words with double letters", player says "COFFEE" → guessed=false (fits but doesn't name rule)
+- Rule "words with double letters", player says "DOUBLE LETTERS" → guessed=true
+- Rule "red items", player says "APPLE" → guessed=false
+- Rule "red items", player says "RED COLOR" or "RED THINGS" → guessed=true
+Be VERY strict about this. Almost always guessed=false.
+
+STEP 4 — HINT (only if needHint=true):
+Generate ONE real word that fits the rule "${rule}".
+- Must be a real, common word
+- Must NOT be in: ${acceptedWords}
+- Must NOT explain the rule — just be an example
+- Single word only, no punctuation
 
 Return JSON: {"allowed": boolean, "guessed": boolean, "hint": string or null}`
 

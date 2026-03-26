@@ -40,11 +40,24 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
   const [timerActive, setTimerActive] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
+  // #2 — поле нового правила при "играть снова"
+  const [showNewRuleInput, setShowNewRuleInput] = useState(false)
+  const [newRuleValue, setNewRuleValue] = useState('')
+
+  // AI угадывает
   const [aiQuestion, setAiQuestion] = useState<string>('')
   const [aiQuestionType, setAiQuestionType] = useState<'question' | 'guess'>('question')
   const [isAiThinking, setIsAiThinking] = useState(false)
   const [aiAttemptsLeft, setAiAttemptsLeft] = useState(3)
   const [isGuessPhase, setIsGuessPhase] = useState(false)
+
+  // #7 — подсказка игрока в акинаторе
+  const [hintInputValue, setHintInputValue] = useState('')
+  const [showHintInput, setShowHintInput] = useState(false)
+
+  // #6 — отслеживаем круг хоста
+  const [hostHasMovedThisRound, setHostHasMovedThisRound] = useState(false)
+  const roundCountRef = useRef(0)
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const prevPlayersRef = useRef<string[]>([])
@@ -77,7 +90,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       aiGuessVictory: "ИИ УГАДАЛ!", aiGuessDefeat: "ТЫ ПОБЕДИЛ!",
       aiDefeatSub: "ИИ НЕ СМОГ УГАДАТЬ ТВОЁ СЛОВО:",
       startAiGame: "НАЧАТЬ — ИИ ЗАДАЁТ ВОПРОСЫ",
-      aiThinking: "ИИ ДУМАЕТ...", yesAnswer: "ДА", noAnswer: "НЕТ",
+      aiThinking: "ИИ ДУМАЕТ...", yesAnswer: "ДА", noAnswer: "НЕТ", maybeAnswer: "ВОЗМОЖНО",
       aiGuessLabel: "🎯 ИИ ДУМАЕТ ЧТО ЭТО:", aiQuestionLabel: "❓ ВОПРОС ОТ ИИ:",
       guessPhaseLabel: "ИИ УГАДЫВАЕТ — ОСТАЛОСЬ ПОПЫТОК:",
       myTurn: "ТВОЙ ХОД", theirTurn: (n: string) => `ХОД: ${n}`,
@@ -87,6 +100,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       timerWarning: "ВРЕМЯ ВЫХОДИТ!",
       lemonadeSpill: (n: string) => `🥤 ${n} ПРОЛИЛ ЛИМОНАД! ХОД ПРОПУСКАЕТСЯ.`,
       hostTurn: "ТВОЙ ХОД — ДАТЬ ПОДСКАЗКУ",
+      newRule: "НОВОЕ ПРАВИЛО ДЛЯ СЛЕДУЮЩЕЙ ИГРЫ:",
+      newRulePlaceholder: "Введи новое правило...",
+      startNewGame: "НАЧАТЬ С НОВЫМ ПРАВИЛОМ",
+      giveHint: "ДАТЬ ПОДСКАЗКУ 💡",
+      hintPlaceholder: "Напиши подсказку (предмет для пикника)...",
+      sendHint: "ОТПРАВИТЬ",
+      cancelHint: "ОТМЕНА",
     },
     EN: {
       title: "PICNIC BUDDY", placeholder: "I'M TAKING...", surrender: "SURRENDER",
@@ -104,7 +124,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       aiGuessVictory: "AI GUESSED IT!", aiGuessDefeat: "YOU WIN!",
       aiDefeatSub: "AI FAILED TO GUESS YOUR WORD:",
       startAiGame: "START — AI ASKS QUESTIONS",
-      aiThinking: "AI THINKING...", yesAnswer: "YES", noAnswer: "NO",
+      aiThinking: "AI THINKING...", yesAnswer: "YES", noAnswer: "NO", maybeAnswer: "MAYBE",
       aiGuessLabel: "🎯 AI GUESS:", aiQuestionLabel: "❓ AI QUESTION:",
       guessPhaseLabel: "AI GUESSING — ATTEMPTS LEFT:",
       myTurn: "YOUR TURN", theirTurn: (n: string) => `TURN: ${n}`,
@@ -114,6 +134,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       timerWarning: "TIME IS RUNNING OUT!",
       lemonadeSpill: (n: string) => `🥤 ${n} SPILLED LEMONADE! TURN SKIPPED.`,
       hostTurn: "YOUR TURN — GIVE A HINT",
+      newRule: "NEW RULE FOR NEXT GAME:",
+      newRulePlaceholder: "Enter new rule...",
+      startNewGame: "START WITH NEW RULE",
+      giveHint: "GIVE HINT 💡",
+      hintPlaceholder: "Write a hint (picnic item)...",
+      sendHint: "SEND",
+      cancelHint: "CANCEL",
     },
     UA: {
       title: "ПІКНІК БАДДІ", placeholder: "Я БЕРУ З СОБОЮ...", surrender: "ЗДАТИСЯ",
@@ -131,7 +158,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       aiGuessVictory: "ШІ ВГАДАВ!", aiGuessDefeat: "ТИ ПЕРЕМІГ!",
       aiDefeatSub: "ШІ НЕ ЗМІГ ВГАДАТИ ТВОЄ СЛОВО:",
       startAiGame: "СТАРТ — ШІ СТАВИТЬ ПИТАННЯ",
-      aiThinking: "ШІ ДУМАЄ...", yesAnswer: "ТАК", noAnswer: "НІ",
+      aiThinking: "ШІ ДУМАЄ...", yesAnswer: "ТАК", noAnswer: "НІ", maybeAnswer: "МОЖЛИВО",
       aiGuessLabel: "🎯 ШІ ДУМАЄ ЩО ЦЕ:", aiQuestionLabel: "❓ ПИТАННЯ ВІД ШІ:",
       guessPhaseLabel: "ШІ ВГАДУЄ — ЗАЛИШИЛОСЬ СПРОБ:",
       myTurn: "ТВІЙ ХІД", theirTurn: (n: string) => `ХІД: ${n}`,
@@ -141,6 +168,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       timerWarning: "ЧАС СПЛИВАЄ!",
       lemonadeSpill: (n: string) => `🥤 ${n} ПРОЛИВ ЛІМОНАД! ХІД ПРОПУСКАЄТЬСЯ.`,
       hostTurn: "ТВІЙ ХІД — ДАТИ ПІДКАЗКУ",
+      newRule: "НОВЕ ПРАВИЛО ДЛЯ НАСТУПНОЇ ГРИ:",
+      newRulePlaceholder: "Введи нове правило...",
+      startNewGame: "ПОЧАТИ З НОВИМ ПРАВИЛОМ",
+      giveHint: "ДАТИ ПІДКАЗКУ 💡",
+      hintPlaceholder: "Напиши підказку (предмет для пікніку)...",
+      sendHint: "НАДІСЛАТИ",
+      cancelHint: "СКАСУВАТИ",
     },
     LV: {
       title: "PIKNIKA BIEDRS", placeholder: "ES ŅEMU LĪDZI...", surrender: "PADOTIES",
@@ -158,7 +192,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       aiGuessVictory: "AI UZMINĒJA!", aiGuessDefeat: "TU UZVARĒJI!",
       aiDefeatSub: "AI NEUZMINĒJA TAVU VĀRDU:",
       startAiGame: "SĀKT — AI UZDOD JAUTĀJUMUS",
-      aiThinking: "AI DOMĀ...", yesAnswer: "JĀ", noAnswer: "NĒ",
+      aiThinking: "AI DOMĀ...", yesAnswer: "JĀ", noAnswer: "NĒ", maybeAnswer: "VARBŪT",
       aiGuessLabel: "🎯 AI DOMĀ KA TAS IR:", aiQuestionLabel: "❓ AI JAUTĀJUMS:",
       guessPhaseLabel: "AI MIN — ATLIKUŠI MĒĢINĀJUMI:",
       myTurn: "TAVS GĀJIENS", theirTurn: (n: string) => `GĀJIENS: ${n}`,
@@ -168,6 +202,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
       timerWarning: "LAIKS BEIDZAS!",
       lemonadeSpill: (n: string) => `🥤 ${n} IZLĒJA LIMONĀDI! GĀJIENS IZLAISTS.`,
       hostTurn: "TAVS GĀJIENS — DOT PADOMU",
+      newRule: "JAUNS NOTEIKUMS NĀKAMAJAI SPĒLEI:",
+      newRulePlaceholder: "Ievadi jaunu noteikumu...",
+      startNewGame: "SĀKT AR JAUNU NOTEIKUMU",
+      giveHint: "DOT MĀJIENU 💡",
+      hintPlaceholder: "Raksti mājienu (piknika priekšmets)...",
+      sendHint: "SŪTĪT",
+      cancelHint: "ATCELT",
     },
   }[lang]
 
@@ -229,6 +270,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         const livesData: Record<string, number> = room.lives || {}
         const isHostPlayer = localStorage.getItem('picnic_is_host') === 'true'
         const isManualMode = mode === 'manual'
+
+        // #4 fix: noLives применяется для ВСЕХ, хост manual никогда не получает жизни
         if (!(name in livesData) && !noLives && !(isHostPlayer && isManualMode)) {
           livesData[name] = 3
           await supabase.from('rooms').update({ lives: livesData }).eq('code', code)
@@ -278,15 +321,18 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         if (p.new.spilled_players) setSpilledPlayers(p.new.spilled_players)
         if (p.new.lives) {
           setPlayerLives(p.new.lives)
-          const newPlayers = Array.from(new Set(Object.keys(p.new.lives))).sort()
-          const prev = prevPlayersRef.current
-          const joined = newPlayers.filter((p2: string) => !prev.includes(p2))
-          if (joined.length > 0 && prev.length > 0) {
-            setNewPlayerNotif(t.playerJoined(joined[0]))
-            setTimeout(() => setNewPlayerNotif(null), 3000)
+          // #4 fix: при noLives не добавляем жизни никому
+          if (!noLives) {
+            const newPlayers = Array.from(new Set(Object.keys(p.new.lives))).sort()
+            const prev = prevPlayersRef.current
+            const joined = newPlayers.filter((p2: string) => !prev.includes(p2))
+            if (joined.length > 0 && prev.length > 0) {
+              setNewPlayerNotif(t.playerJoined(joined[0]))
+              setTimeout(() => setNewPlayerNotif(null), 3000)
+            }
+            prevPlayersRef.current = newPlayers
+            setPlayers(newPlayers)
           }
-          prevPlayersRef.current = newPlayers
-          setPlayers(newPlayers)
         }
       })
       .subscribe()
@@ -294,19 +340,34 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     return () => { supabase.removeChannel(channel) }
   }, [code])
 
-  // #1 — Играть снова в том же лобби
-  const handlePlayAgain = async () => {
+  // #2 — Играть снова: хост вводит новое правило
+  const handlePlayAgain = async (newRule?: string) => {
+    const ruleToUse = newRule || revealReason
+
     const { data: room } = await supabase.from('rooms').select('lives').eq('code', code).single()
     const resetLives: Record<string, number> = {}
-    Object.keys(room?.lives || {}).forEach(p => { resetLives[p] = 3 })
+
+    // #4 fix: при noLives не даём жизни никому
+    if (!noLives) {
+      Object.keys(room?.lives || {}).forEach(p => {
+        // хост manual не получает жизни
+        if (!(isManual && isHost && p === playerName)) {
+          resetLives[p] = 3
+        }
+      })
+    }
+
     await supabase.from('rooms').update({
       status: 'waiting',
       winner: null,
+      secret_rule: ruleToUse,
       turn_player: players[0] || '',
       lives: resetLives,
       spilled_players: {}
     }).eq('code', code)
+
     await supabase.from('moves').delete().eq('room_code', code)
+
     setIsGameOver(false)
     setIsVictory(false)
     setHasSurrendered(false)
@@ -319,6 +380,11 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     setIsGuessPhase(false)
     setAiAttemptsLeft(3)
     setTurnTimeLeft(120)
+    setShowNewRuleInput(false)
+    setNewRuleValue('')
+    setHostHasMovedThisRound(false)
+    roundCountRef.current = 0
+    setRevealReason(ruleToUse)
   }
 
   const copyCode = () => {
@@ -345,7 +411,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         setIsGameOver(true)
         await supabase.from('rooms').update({ status: 'finished' }).eq('code', code)
       } else {
-        // #9 — лимонад + пропуск хода + восстановление жизней
         await supabase.from('moves').insert([{
           room_code: code,
           player_name: t.hostName,
@@ -371,6 +436,34 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     setSpilledPlayers(updated)
   }
 
+  // Вспомогательная функция для следующего хода (не меняет ход при judge)
+  const advanceTurn = async (currentTurnOverride?: string) => {
+    const { data: freshRoom } = await supabase.from('rooms').select('lives, turn_player, spilled_players').eq('code', code).single()
+    const allPlayers = Object.keys(freshRoom?.lives || {}).sort()
+    const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
+    if (activePlayers.length === 0) return
+
+    const currentTurn = currentTurnOverride || freshRoom?.turn_player || playerName
+    const currentIdx = activePlayers.indexOf(currentTurn)
+    const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % activePlayers.length
+
+    let finalNextIdx = nextIdx
+    const nextCandidate = activePlayers[nextIdx]
+    if (nextCandidate && freshRoom?.spilled_players?.[nextCandidate]) {
+      await clearSpilled(nextCandidate)
+      finalNextIdx = (nextIdx + 1) % activePlayers.length
+    }
+
+    // #6 — проверяем завершился ли круг (вернулись к первому игроку)
+    if (finalNextIdx <= currentIdx && activePlayers.length > 1) {
+      roundCountRef.current += 1
+      setHostHasMovedThisRound(false) // хост снова должен сделать ход в новом круге
+    }
+
+    await supabase.from('rooms').update({ turn_player: activePlayers[finalNextIdx] }).eq('code', code)
+    return activePlayers[finalNextIdx]
+  }
+
   const askAiQuestion = async () => {
     setIsAiThinking(true)
     try {
@@ -394,25 +487,32 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     }
   }
 
-  const answerAiQuestion = async (answer: boolean) => {
+  // #5 — ответ "возможно"
+  const answerAiQuestion = async (answer: boolean | 'maybe') => {
     const { data: lastMove } = await supabase
       .from('moves').select('*').eq('room_code', code)
       .eq('player_name', t.hostName)
       .order('created_at', { ascending: false }).limit(1).single()
 
     if (lastMove) {
-      await supabase.from('moves').update({ is_allowed: answer }).eq('id', lastMove.id)
+      await supabase.from('moves').update({ is_allowed: answer === true }).eq('id', lastMove.id)
+
+      let answerItem = ''
+      if (answer === true) answerItem = `✅ ${t.yesAnswer}`
+      else if (answer === false) answerItem = `❌ ${t.noAnswer}`
+      else answerItem = `🟡 ${t.maybeAnswer}`
+
       await supabase.from('moves').insert([{
         room_code: code, player_name: playerName,
-        item: answer ? `✅ ${t.yesAnswer}` : `❌ ${t.noAnswer}`,
-        status: 'approved', is_allowed: answer
+        item: answerItem,
+        status: 'approved', is_allowed: answer === true
       }])
     }
 
-    if (aiQuestionType === 'guess' && answer) {
+    if (aiQuestionType === 'guess' && answer === true) {
       await supabase.from('rooms').update({ status: 'victory', winner: t.hostName }).eq('code', code)
       setIsVictory(true); setWinner(t.hostName)
-    } else if (aiQuestionType === 'guess' && !answer) {
+        } else if (aiQuestionType === 'guess' && answer !== true) {
       const newAttempts = aiAttemptsLeft - 1
       setAiAttemptsLeft(newAttempts)
       setAiQuestion('')
@@ -428,6 +528,40 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     }
   }
 
+  // #7 — отправить подсказку в акинатор
+  const sendHint = async () => {
+    if (!hintInputValue.trim()) return
+    const hintText = hintInputValue.trim().toUpperCase()
+    await supabase.from('moves').insert([{
+      room_code: code, player_name: playerName,
+      item: `💡 ${hintText}`,
+      status: 'approved', is_allowed: true
+    }])
+    // Передаём подсказку в следующий вопрос ИИ
+    setIsAiThinking(true)
+    try {
+      const res = await fetch('/api/ai-guess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomCode: code, lang, playerHint: hintText })
+      })
+      const data = await res.json()
+      setAiQuestion(data.text)
+      setAiQuestionType(data.type)
+      setIsGuessPhase(data.isGuessPhase || false)
+      if (data.attemptsLeft !== undefined) setAiAttemptsLeft(data.attemptsLeft)
+      await supabase.from('moves').insert([{
+        room_code: code, player_name: t.hostName,
+        item: data.type === 'guess' ? `🎯 ${data.text}` : `❓ ${data.text}`,
+        status: 'approved', is_allowed: true
+      }])
+    } finally {
+      setIsAiThinking(false)
+    }
+    setHintInputValue('')
+    setShowHintInput(false)
+  }
+
   const handleSend = async () => {
     if (!inputValue.trim() || isGameOver || isVictory || isChecking || isEliminated || code === 'undefined') return
     if (isAssist && isHost) return
@@ -435,13 +569,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
 
     if (isSpilled) {
       await clearSpilled(playerName)
-      const { data: freshRoom } = await supabase.from('rooms').select('lives, turn_player').eq('code', code).single()
-      const allPlayers = Object.keys(freshRoom?.lives || {}).sort()
-      const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
-      const currentTurn = freshRoom?.turn_player || playerName
-      const currentIdx = activePlayers.indexOf(currentTurn)
-      const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % activePlayers.length
-      await supabase.from('rooms').update({ turn_player: activePlayers[nextIdx] }).eq('code', code)
+      await advanceTurn()
       return
     }
 
@@ -485,7 +613,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         if (!result.allowed) await handleLoseLive(playerName)
       }
 
-      // AI HOST
+      // #3 fix: AI HOST — проверяем ход КАЖДОГО игрока независимо
       if (isAiHost) {
         const res = await fetch('/api/check', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -503,39 +631,24 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         await supabase.from('moves').update({ is_allowed: result.allowed, status: 'approved' }).eq('id', move.id)
         if (!result.allowed) await handleLoseLive(playerName)
 
-        const { data: freshRoom } = await supabase.from('rooms').select('lives, turn_player, spilled_players').eq('code', code).single()
-        const allPlayers = Object.keys(freshRoom?.lives || {}).sort()
-        const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
+        // #3 fix: advanceTurn всегда переключает ход, независимо от того кто ходил
+        const nextPlayer = await advanceTurn()
 
-        if (activePlayers.length > 0) {
-          const currentTurn = freshRoom?.turn_player || playerName
-          const currentIdx = activePlayers.indexOf(currentTurn)
-          const nextIdx = (currentIdx + 1) % activePlayers.length
-
-          let finalNextIdx = nextIdx
-          const nextCandidate = activePlayers[nextIdx]
-          if (freshRoom?.spilled_players?.[nextCandidate]) {
-            await clearSpilled(nextCandidate)
-            finalNextIdx = (nextIdx + 1) % activePlayers.length
+        // Раз в круг — подсказка от ИИ (просто слово)
+        if (!hostHasMovedThisRound) {
+          const hintRes = await fetch('/api/check', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item: text, roomCode: code, lang, needHint: true })
+          })
+          const hintResult = await hintRes.json()
+          if (hintResult.hint) {
+            await supabase.from('moves').insert([{
+              room_code: code, player_name: t.hostName,
+              item: hintResult.hint,
+              status: 'approved', is_allowed: true
+            }])
           }
-
-          // #10 — раз в круг даём просто слово по правилу (не подсказку)
-          if (finalNextIdx <= currentIdx && activePlayers.length > 1) {
-            const hintRes = await fetch('/api/check', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ item: text, roomCode: code, lang, needHint: true })
-            })
-            const hintResult = await hintRes.json()
-            if (hintResult.hint) {
-              await supabase.from('moves').insert([{
-                room_code: code, player_name: t.hostName,
-                item: hintResult.hint,
-                status: 'approved', is_allowed: true
-              }])
-            }
-          }
-
-          await supabase.from('rooms').update({ turn_player: activePlayers[finalNextIdx] }).eq('code', code)
+          setHostHasMovedThisRound(true)
         }
       }
 
@@ -556,21 +669,13 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           if (!result.allowed) await handleLoseLive(playerName)
         }
 
-        const { data: freshRoom } = await supabase.from('rooms').select('lives, turn_player, spilled_players').eq('code', code).single()
-        const allPlayers = Object.keys(freshRoom?.lives || {}).sort()
-        const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
-        const currentTurn = freshRoom?.turn_player || playerName
-        const currentIdx = activePlayers.indexOf(currentTurn)
-        const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % activePlayers.length
-
-        let finalNextIdx = nextIdx
-        const nextCandidate = activePlayers[nextIdx]
-        if (nextCandidate && freshRoom?.spilled_players?.[nextCandidate]) {
-          await clearSpilled(nextCandidate)
-          finalNextIdx = (nextIdx + 1) % activePlayers.length
+        // #6 fix: хост в manual — если это его ход, отмечаем что он походил
+        if (isHost && isManual) {
+          setHostHasMovedThisRound(true)
         }
 
-        await supabase.from('rooms').update({ turn_player: activePlayers[finalNextIdx] }).eq('code', code)
+        // #1 fix: всегда переключаем ход после хода игрока
+        await advanceTurn()
       }
 
     } finally {
@@ -578,30 +683,14 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     }
   }
 
+  // #1 fix: judge НЕ переключает ход — только оценивает слово
   const judge = async (id: string, allowed: boolean) => {
     await supabase.from('moves').update({ status: 'approved', is_allowed: allowed }).eq('id', id)
     if (!allowed) {
       const { data: move } = await supabase.from('moves').select('player_name').eq('id', id).single()
       if (move) await handleLoseLive(move.player_name)
     }
-
-    const { data: freshRoom } = await supabase.from('rooms').select('lives, turn_player, spilled_players').eq('code', code).single()
-    const allPlayers = Object.keys(freshRoom?.lives || {}).sort()
-    const activePlayers = allPlayers.filter(p => !eliminatedPlayers.includes(p))
-    const currentTurn = freshRoom?.turn_player || ''
-    const currentIdx = activePlayers.indexOf(currentTurn)
-    const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % activePlayers.length
-
-    let finalNextIdx = nextIdx
-    const nextCandidate = activePlayers[nextIdx]
-    if (nextCandidate && freshRoom?.spilled_players?.[nextCandidate]) {
-      await clearSpilled(nextCandidate)
-      finalNextIdx = (nextIdx + 1) % activePlayers.length
-    }
-
-    if (activePlayers[finalNextIdx]) {
-      await supabase.from('rooms').update({ turn_player: activePlayers[finalNextIdx] }).eq('code', code)
-    }
+    // НЕ вызываем advanceTurn() — ход меняется только когда игрок сам ходит
   }
 
   const declareWinner = async (winnerName: string) => {
@@ -613,10 +702,15 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
     setIsVictory(true); setWinner(winnerName)
   }
 
-  const canType = !isSpilled && !isChecking && isMyTurn && !isGameOver && !isVictory && !isEliminated && !(isAssist && isHost)
+  // #6 fix: хост может печатать когда его ход И он ещё не ходил в этом круге
+  const hostCanType = isHost && isManual && isMyTurn && !hostHasMovedThisRound
+  const canType = !isSpilled && !isChecking && !isGameOver && !isVictory && !isEliminated
+    && !(isAssist && isHost)
+    && (isMyTurn || hostCanType)
 
   const getPlaceholder = () => {
     if (isAssist && isHost) return t.hostTurn
+    if (isHost && isManual && hostHasMovedThisRound) return t.notYourTurn(turnPlayer)
     if (isSpilled) return t.spilled
     if (isChecking) return '...'
     if (!isMyTurn && turnPlayer) return t.notYourTurn(turnPlayer)
@@ -642,7 +736,6 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             </button>
           </div>
           <div className="flex gap-2 md:gap-3 items-center">
-            {/* Жизни — не показываем хосту в manual (#5) */}
             {!isManual && !noLives && !isAiGuesses && (
               <div className="flex gap-0.5">
                 {[...Array(Math.max(myLives, 0))].map((_, i) => (
@@ -771,6 +864,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             const isPending = move.status === 'pending'
             const isAllowed = move.is_allowed
             const isHostMsg = move.player_name === t.hostName
+            const isMaybe = move.item.includes('🟡')
 
             return (
               <motion.div key={move.id || index} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -781,16 +875,19 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                 <div className={`px-4 py-2 rounded-2xl flex items-center gap-2 border-2
                   ${isHostMsg
                     ? 'bg-[#1A5319] text-white border-[#1A5319] font-black uppercase text-sm px-6 py-3'
+                    : isMaybe
+                    ? 'bg-yellow-50 text-yellow-800 border-yellow-200'
                     : isPending
                     ? 'bg-gray-100 text-gray-500 border-gray-200'
                     : isAllowed
                     ? 'bg-[#E6F4EA] text-[#1A5319] border-[#A8D5BA]'
                     : 'bg-[#FCE8E8] text-[#C62828] border-[#F4B4B4] line-through opacity-60'}`}>
                   <span className="font-bold text-lg md:text-xl">{move.item}</span>
-                  {!isHostMsg && (
+                  {!isHostMsg && !isMaybe && (
                     <span className="text-xl">{isPending ? '⏳' : isAllowed ? '✅' : '❌'}</span>
                   )}
                 </div>
+                {/* #1 fix: кнопки judge есть всегда когда pending, не влияют на ход */}
                 {isHost && isManual && subMode === 'hardcore' && isPending && !isMe && (
                   <div className="flex gap-2 mt-1">
                     <button onClick={() => judge(move.id, true)} className="bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded-full text-xs font-bold">✅ OK</button>
@@ -837,28 +934,90 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                   {t.aiThinking}
                 </div>
               )}
+              {/* #5 — три кнопки: да, нет, возможно */}
               {aiQuestion && !isAiThinking && (
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <button onClick={() => answerAiQuestion(false)}
-                    className="flex-1 h-16 md:h-20 bg-red-500 text-white rounded-[22px] font-black text-xl md:text-2xl active:scale-95 transition-all shadow-xl">
+                    className="flex-1 h-16 md:h-20 bg-red-500 text-white rounded-[22px] font-black text-lg md:text-xl active:scale-95 transition-all shadow-xl">
                     ❌ {t.noAnswer}
                   </button>
+                  <button onClick={() => answerAiQuestion('maybe')}
+                    className="flex-1 h-16 md:h-20 bg-yellow-400 text-white rounded-[22px] font-black text-lg md:text-xl active:scale-95 transition-all shadow-xl">
+                    🟡 {t.maybeAnswer}
+                  </button>
                   <button onClick={() => answerAiQuestion(true)}
-                    className="flex-1 h-16 md:h-20 bg-green-500 text-white rounded-[22px] font-black text-xl md:text-2xl active:scale-95 transition-all shadow-xl">
+                    className="flex-1 h-16 md:h-20 bg-green-500 text-white rounded-[22px] font-black text-lg md:text-xl active:scale-95 transition-all shadow-xl">
                     ✅ {t.yesAnswer}
                   </button>
+                </div>
+              )}
+              {/* #7 — поле для подсказки */}
+              {aiQuestion && !isAiThinking && (
+                <div>
+                  {!showHintInput ? (
+                    <button onClick={() => setShowHintInput(true)}
+                      className="w-full py-3 bg-white border-2 border-[#1A5319]/20 text-[#1A5319] rounded-[18px] font-black text-sm uppercase opacity-60 hover:opacity-100 transition-all">
+                      {t.giveHint}
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={hintInputValue}
+                        onChange={(e) => setHintInputValue(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && sendHint()}
+                        placeholder={t.hintPlaceholder}
+                        className="flex-1 px-4 py-3 rounded-full border-2 border-yellow-300 bg-yellow-50 font-black text-[#1A5319] placeholder:opacity-40 focus:outline-none focus:border-yellow-400 uppercase text-sm"
+                      />
+                      <button onClick={sendHint}
+                        className="px-4 py-3 bg-yellow-400 text-white rounded-full font-black text-sm active:scale-95 transition-all">
+                        {t.sendHint}
+                      </button>
+                      <button onClick={() => { setShowHintInput(false); setHintInputValue('') }}
+                        className="px-4 py-3 bg-gray-100 text-gray-500 rounded-full font-black text-sm active:scale-95 transition-all">
+                        {t.cancelHint}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Обычный инпут — конец игры */}
+          {/* Конец игры */}
           {!isAiGuesses && (isGameOver || isVictory || hasSurrendered) && (
             <div className="text-center font-black text-xl text-[#1A5319] p-4 bg-white/80 rounded-2xl border-2 border-green-200">
               <div className="text-sm opacity-50 mt-1">{t.concept} {revealReason}</div>
-              {/* #1 — кнопки "Играть снова" и "В лобби" */}
-              {!isSolo && (
-                <button onClick={handlePlayAgain}
+              {/* #2 fix: хост вводит новое правило */}
+              {!isSolo && isHost && isManual && (
+                <div className="mt-3">
+                  {!showNewRuleInput ? (
+                    <button onClick={() => setShowNewRuleInput(true)}
+                      className="w-full px-6 py-3 bg-[#1A5319] text-white rounded-full text-sm font-black uppercase">
+                      {t.playAgain}
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs opacity-50 uppercase">{t.newRule}</p>
+                      <input
+                        type="text"
+                        value={newRuleValue}
+                        onChange={(e) => setNewRuleValue(e.target.value)}
+                        placeholder={t.newRulePlaceholder}
+                        className="w-full px-4 py-3 rounded-full border-2 border-[#1A5319]/30 bg-white font-black text-[#1A5319] placeholder:opacity-30 focus:outline-none focus:border-[#1A5319]/60 uppercase text-sm"
+                      />
+                      <button
+                        onClick={() => newRuleValue.trim() && handlePlayAgain(newRuleValue.trim())}
+                        disabled={!newRuleValue.trim()}
+                        className="w-full px-6 py-3 bg-[#1A5319] text-white rounded-full text-sm font-black uppercase disabled:opacity-40">
+                        {t.startNewGame}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {!isSolo && !isManual && (
+                <button onClick={() => handlePlayAgain()}
                   className="mt-3 px-6 py-3 bg-[#1A5319] text-white rounded-full text-sm font-black uppercase w-full">
                   {t.playAgain}
                 </button>
@@ -870,7 +1029,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
             </div>
           )}
 
-          {/* Обычный инпут — игра */}
+          {/* Обычный инпут */}
           {!isAiGuesses && !isGameOver && !isVictory && !hasSurrendered && (
             <div className="flex gap-2">
               <input
@@ -925,8 +1084,34 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                 )}
                 <p className="opacity-40 text-[10px] uppercase font-bold tracking-widest text-white mb-2">{t.concept}</p>
                 <p className="text-2xl font-bold italic underline decoration-green-400 decoration-2 underline-offset-4 mb-6 text-white">"{revealReason}"</p>
-                {/* #1 — кнопки на оверлее */}
-                {!isSolo && (
+                {!isSolo && isHost && isManual && (
+                  <div className="mb-3">
+                    {!showNewRuleInput ? (
+                      <button onClick={() => setShowNewRuleInput(true)}
+                        className="w-full bg-white/20 text-white py-4 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-white/30">
+                        {t.playAgain}
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs opacity-60 uppercase text-white">{t.newRule}</p>
+                        <input
+                          type="text"
+                          value={newRuleValue}
+                          onChange={(e) => setNewRuleValue(e.target.value)}
+                          placeholder={t.newRulePlaceholder}
+                          className="w-full px-4 py-3 rounded-full border-2 border-white/30 bg-white/10 text-white font-black placeholder:opacity-40 focus:outline-none focus:border-white/60 uppercase text-sm"
+                        />
+                        <button
+                          onClick={() => newRuleValue.trim() && handlePlayAgain(newRuleValue.trim())}
+                          disabled={!newRuleValue.trim()}
+                          className="w-full bg-white text-black py-4 rounded-[22px] font-black uppercase text-sm disabled:opacity-40">
+                          {t.startNewGame}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!isSolo && !isManual && (
                   <button onClick={() => { setIsVictory(false); handlePlayAgain() }}
                     className="w-full bg-white/20 text-white py-4 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-white/30 mb-3">
                     {t.playAgain}
@@ -963,7 +1148,7 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
         )}
       </AnimatePresence>
 
-            {/* OVERLAY — СДАЛСЯ */}
+      {/* OVERLAY — СДАЛСЯ */}
       <AnimatePresence>
         {showSurrender && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}
@@ -974,7 +1159,34 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
                 <h2 className="text-4xl font-black italic mb-2 text-white">{t.surrenderTitle}</h2>
                 <p className="opacity-40 text-[10px] uppercase font-bold tracking-widest text-white mb-2">{t.concept}</p>
                 <p className="text-2xl font-bold italic underline decoration-green-400 decoration-2 underline-offset-4 mb-6 text-white">"{revealReason}"</p>
-                {!isSolo && (
+                {!isSolo && isHost && isManual && (
+                  <div className="mb-3">
+                    {!showNewRuleInput ? (
+                      <button onClick={() => setShowNewRuleInput(true)}
+                        className="w-full bg-white/20 text-white py-4 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-white/30">
+                        {t.playAgain}
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs opacity-60 uppercase text-white">{t.newRule}</p>
+                        <input
+                          type="text"
+                          value={newRuleValue}
+                          onChange={(e) => setNewRuleValue(e.target.value)}
+                          placeholder={t.newRulePlaceholder}
+                          className="w-full px-4 py-3 rounded-full border-2 border-white/30 bg-white/10 text-white font-black placeholder:opacity-40 focus:outline-none uppercase text-sm"
+                        />
+                        <button
+                          onClick={() => newRuleValue.trim() && handlePlayAgain(newRuleValue.trim())}
+                          disabled={!newRuleValue.trim()}
+                          className="w-full bg-white text-black py-4 rounded-[22px] font-black uppercase text-sm disabled:opacity-40">
+                          {t.startNewGame}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!isSolo && !isManual && (
                   <button onClick={() => { setHasSurrendered(false); handlePlayAgain() }}
                     className="w-full bg-white/20 text-white py-4 rounded-[22px] font-black uppercase text-sm tracking-widest hover:bg-white/30 mb-3">
                     {t.playAgain}
@@ -989,7 +1201,8 @@ export default function GamePage({ params }: { params: Promise<{ code: string }>
           </motion.div>
         )}
       </AnimatePresence>
-      {/* OVERLAY — ПРОЛИЛ ЛИМОНАД (соло) */}
+
+      {/* OVERLAY — ЛИМОНАД (соло) */}
       <AnimatePresence>
         {isSolo && isSpilled && (
           <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}

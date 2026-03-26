@@ -7,8 +7,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-const MAX_QUESTIONS = 12 // вопросов до фазы угадывания
-const MAX_GUESSES = 3    // попыток угадать
+const MAX_QUESTIONS = 12
+const MAX_GUESSES = 3
 
 function getKeys(): string[] {
   const keysString = process.env.GROQ_API_KEYS || process.env.GROQ_API_KEY || ""
@@ -25,7 +25,7 @@ async function callGroq(keys: string[], prompt: string): Promise<any> {
           { role: "system", content: "You are a JSON-only response bot. Never add text outside JSON." },
           { role: "user", content: prompt }
         ],
-        temperature: 0.7,
+        temperature: 0.5,
         response_format: { type: "json_object" }
       })
     } catch (err: any) {
@@ -41,6 +41,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     lang = body.lang || 'RU'
     const roomCode = body.roomCode
+    const playerHint = body.playerHint || null // #7 — подсказка от игрока
 
     const { data: moves } = await supabase
       .from('moves')
@@ -50,17 +51,28 @@ export async function POST(req: Request) {
 
     const hostNames = ['ВЕДУЩИЙ ИИ', 'HOST AI', 'ВЕДУЧИЙ ШІ', 'VADĪTĀJS AI']
 
-    // История диалога
+    // #5 — учитываем "возможно" в истории
     const dialogHistory = moves?.map(m => {
       if (hostNames.includes(m.player_name)) {
         return `AI: ${m.item}`
       } else {
+        // Определяем тип ответа по содержимому
+        if (m.item.includes('🟡') || m.item.includes('MAYBE') || m.item.includes('ВОЗМОЖНО') ||
+            m.item.includes('МОЖЛИВО') || m.item.includes('DAĻĒJI')) {
+          return `Player answered: MAYBE/PARTIALLY (to previous AI message)`
+        }
         const answer = m.is_allowed ? 'YES' : 'NO'
-        return `Player answered: ${answer} (to: ${m.item})`
+        return `Player answered: ${answer} (to previous AI message)`
       }
     }).join('\n') || 'Game just started.'
 
-    // Вопросы которые уже задавались
+    // Подсказки от игрока
+    const playerHints = moves
+      ?.filter(m => !hostNames.includes(m.player_name) && m.item.includes('💡'))
+      .map(m => m.item.replace('💡 ', '').trim()) || []
+
+    if (playerHint) playerHints.push(playerHint)
+
     const askedQuestions = moves
       ?.filter(m => hostNames.includes(m.player_name) && m.item.includes('❓'))
       .map(m => m.item.replace('❓ ', '').trim())
@@ -68,7 +80,6 @@ export async function POST(req: Request) {
 
     const askedCount = askedQuestions.length
 
-    // Попытки угадать
     const guessAttempts = moves
       ?.filter(m => hostNames.includes(m.player_name) && m.item.includes('🎯'))
       .length || 0
@@ -76,52 +87,66 @@ export async function POST(req: Request) {
     const isGuessPhase = askedCount >= MAX_QUESTIONS
     const attemptsLeft = MAX_GUESSES - guessAttempts
 
-    // Неправильные угадывания
     const wrongGuesses = moves
       ?.filter(m => hostNames.includes(m.player_name) && m.item.includes('🎯'))
       .map(m => m.item.replace('🎯 ', '').trim()) || []
 
+    const hintsSection = playerHints.length > 0
+      ? `\n=== PLAYER HINTS (picnic items given as clues) ===\n${playerHints.map(h => `- "${h}"`).join('\n')}\nThese are ITEMS that fit the secret rule/concept. Use them to narrow down your guess.\n`
+      : ''
+
     let prompt = ''
 
     if (isGuessPhase) {
-      // #8 fix: фаза угадывания
-      prompt = `You are playing Akinator. Language: ${lang}.
-You have asked ${MAX_QUESTIONS} yes/no questions. Now you must guess.
+      prompt = `You are playing a word guessing game (like Akinator). Language: ${lang}.
+You asked ${MAX_QUESTIONS} yes/no questions. Now make your best guess.
 You have ${attemptsLeft} guess attempt(s) left.
 
-=== DIALOG HISTORY ===
+=== FULL DIALOG HISTORY ===
 ${dialogHistory}
+${hintsSection}
+=== YOUR WRONG GUESSES ===
+${wrongGuesses.length > 0 ? wrongGuesses.join(', ') : 'none yet'}
 
-=== YOUR WRONG GUESSES SO FAR ===
-${wrongGuesses.length > 0 ? wrongGuesses.join(', ') : 'none'}
+ANALYSIS INSTRUCTIONS:
+1. Review ALL yes/no/maybe answers carefully
+2. Consider player hints as items that fit the rule
+3. Eliminate what was ruled out by NO answers
+4. Focus on what YES and MAYBE answers confirm
+5. Make the most logical guess based on ALL evidence
+6. Do NOT repeat a wrong guess: ${wrongGuesses.join(', ') || 'none'}
 
-Based on all YES/NO answers, make your best guess for what the secret word/concept is.
-- Do NOT repeat a wrong guess
-- Single word or very short phrase
-- In language: ${lang}
+Your guess should be a word, short phrase, or rule description — whatever fits best.
+Write in language: ${lang}
 
 Return JSON: {"type": "guess", "text": "your best guess"}`
 
     } else {
-      // #8 fix: ТОЛЬКО вопросы на которые можно ответить да/нет
-      prompt = `You are playing Akinator. Language: ${lang}.
-Your goal: guess the SECRET WORD by asking YES/NO questions only.
-You have ${MAX_QUESTIONS - askedCount} questions left before you must start guessing.
+      prompt = `You are playing a word/concept guessing game. Language: ${lang}.
+Your goal: figure out the SECRET WORD or RULE by asking smart yes/no questions.
+You have ${MAX_QUESTIONS - askedCount} questions left.
 
-=== DIALOG HISTORY ===
+=== FULL DIALOG HISTORY ===
 ${dialogHistory}
-
-=== QUESTIONS YOU ALREADY ASKED (${askedCount}/${MAX_QUESTIONS}) ===
+${hintsSection}
+=== QUESTIONS ALREADY ASKED (${askedCount}/${MAX_QUESTIONS}) ===
 ${askedCount > 0 ? askedQuestions.map(q => `- ${q}`).join('\n') : '- none yet'}
 
-Ask question #${askedCount + 1}.
+STRATEGY FOR QUESTION #${askedCount + 1}:
+- Analyze what you know from previous answers
+- Each question should cut remaining possibilities in HALF
+- Cover new territory: don't ask similar questions to ones already asked
+- Think about: is it physical/abstract? alive/inanimate? natural/man-made? used/worn/eaten?
+  size? location? time period? letter patterns? number of syllables?
+- If player gave hint items, think about what PROPERTY they share
+- MAYBE answers mean partial match — dig deeper into that property
 
 STRICT RULES:
-1. The question MUST be answerable with YES or NO only. No "how many", "what color exactly", "which" — only yes/no.
-2. NEVER repeat any question from the list above.
-3. Explore new properties: is it alive? is it bigger than a car? is it used indoors? is it found in nature? can you eat it?
-4. Keep questions short (under 10 words).
-5. Write the question in language: ${lang}.
+1. Question MUST be answerable with YES, NO, or MAYBE only
+2. NEVER repeat or paraphrase any question from the list above
+3. Keep it SHORT — under 10 words
+4. Write in language: ${lang}
+5. Be SMART — make every question count
 
 Return JSON: {"type": "question", "text": "your yes/no question"}`
     }
@@ -141,10 +166,10 @@ Return JSON: {"type": "question", "text": "your yes/no question"}`
   } catch (error: any) {
     console.error("AI Guess Error:", error?.message)
     const fallbacks: Record<string, string> = {
-      RU: "Это живое существо?",
-      EN: "Is it a living creature?",
-      UA: "Це жива істота?",
-      LV: "Vai tas ir dzīva būtne?"
+      RU: "Это физический предмет?",
+      EN: "Is it a physical object?",
+      UA: "Це фізичний предмет?",
+      LV: "Vai tas ir fizisks priekšmets?"
     }
     return NextResponse.json({
       type: "question",
